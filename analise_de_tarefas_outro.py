@@ -2468,7 +2468,7 @@ g = Github(TOKEN)
 
 # ESSE É O PONTO: Coloque o texto direto aqui para não dar erro de "REPO_NOME not defined"
 
-repo = g.get_repo("lucianohcl/formulario-colaborador") 
+repo = g.get_repo("lucianohcl/formulario-novo") 
 
 
 
