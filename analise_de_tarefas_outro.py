@@ -2264,7 +2264,7 @@ import streamlit as st
 def salvar_no_github(conteudo_dict, nome_arquivo):
     try:
         g = Github(st.secrets["DB_TOKEN"])
-        repo = g.get_repo("lucianohcl/formulario-novo")
+        repo = g.get_repo("lucianohcl/formulario-colaborador")
         caminho_git = f"dados/{nome_arquivo}"
         
         json_string = json.dumps(conteudo_dict, ensure_ascii=False, indent=4)
@@ -2468,7 +2468,7 @@ g = Github(TOKEN)
 
 # ESSE É O PONTO: Coloque o texto direto aqui para não dar erro de "REPO_NOME not defined"
 
-repo = g.get_repo("lucianohcl/formulario-novo") 
+repo = g.get_repo("lucianohcl/formulario-colaborador") 
 
 
 
