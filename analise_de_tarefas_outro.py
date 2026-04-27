@@ -1533,25 +1533,28 @@ st.session_state["rascunho"]["disc"] = respostas_disc_atual
 
 
 # =========================================================
-# 6. VALIDAÇÃO UNIFICADA (TABELAS, DISC E CABEÇALHO)
+# 6. VALIDAÇÃO UNIFICADA (CABECALHO, TABELAS, SISTEMAS E DISC)
 # =========================================================
 st.markdown("---")
 st.subheader("✅ Status de Validação do Formulário")
 
 pendencias = []
+contador_sistemas = 0
+# Palavras-chave para a inteligência detectar uso de sistemas/software
+keywords_sistemas = ["SISTEMA", "SAP", "EXCEL", "SOFTWARE", "ERP", "SITE", "PLATAFORMA", "APP", "COMPUTADOR", "DIGITAR", "LANÇAR", "TOTVS", "WINDOWS"]
 
-# --- 1. VALIDAÇÃO DE CABEÇALHO ---
+# --- 1. VALIDAÇÃO DE CABEÇALHO (INCLUINDO NOVO CAMPO SISTEMAS) ---
 campos_id = {
     "Nome": nome_f, "Cargo": cargo_f, "Departamento": depto_f,
     "Escolaridade": esc_f, "Setor": setor_f, "Chefe Imediato": chefe_f,
     "Empresa/Unidade": unidade_f, "Devolver em": dev_f,
-    "Cursos": cursos_f, "Objetivo": obj_f
+    "Cursos": cursos_f, "Objetivo": obj_f, "Sistemas Utilizados": sistemas_f
 }
 for campo, valor in campos_id.items():
     if not valor or str(valor).strip() == "":
         pendencias.append(f"Identificação: O campo **{campo}** está vazio.")
 
-# --- 2. VALIDAÇÃO DAS TABELAS (RIGOR TOTAL) ---
+# --- 2. VALIDAÇÃO DAS TABELAS (RIGOR TOTAL + REGRAS LUCIANO) ---
 dict_tabelas = {
     "Alta Complexidade": e_alta, 
     "Complexidade Normal": e_normal,
@@ -1575,50 +1578,50 @@ for nome_tab, df_validar in dict_tabelas.items():
         # Identifica linhas onde a descrição foi preenchida
         linhas_ativas = df_validar[df_validar[col_alvo].astype(str).str.strip() != ""]
         
-        if len(linhas_ativas) == 0:
-            pendencias.append(f"⚠️ A tabela **{nome_tab}** está totalmente vazia. Preencha pelo menos 1 item.")
-        else:
-            for i, row in linhas_ativas.iterrows():
-                # Extração limpa dos valores
-                h_str = str(row.get("Horas", "")).strip()
-                m_str = str(row.get("Minutos", "")).strip()
-                freq = str(row.get("Frequência", "")).strip()
-                
-                # Validação de Horas
-                if h_str == "":
-                    pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Falta selecionar as **Horas**.")
-                
-                # Validação de Minutos
-                if m_str == "":
-                    pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Falta selecionar os **Minutos**.")
-                
-                # Validação de Frequência
-                if freq == "":
-                    pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Falta selecionar a **Frequência**.")
-                
-                # Validação extra para colunas específicas (Impacto / Setor)
-                if nome_tab == "Dificuldades":
-                    if str(row.get("Setor Envolvido", "")).strip() == "":
-                        pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Informe o **Setor Envolvido**.")
-                
-                if nome_tab == "Sugestões e Melhorias":
-                    if str(row.get("Impacto Esperado", "")).strip() == "":
-                        pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Informe o **Impacto Esperado**.")
+        # --- REGRA OBRIGATÓRIA: DIFICULDADE E SUGESTÃO ---
+        if nome_tab in ["Dificuldades", "Sugestões e Melhorias"] and len(linhas_ativas) == 0:
+            pendencias.append(f"⚠️ **{nome_tab}**: É obrigatório relatar pelo menos 1 item nesta tabela.")
 
-# --- 3. VALIDAÇÃO DO DISC ---
+        for i, row in linhas_ativas.iterrows():
+            txt_principal = str(row.get(col_alvo, "")).upper()
+            h_str = str(row.get("Horas", "")).strip()
+            m_str = str(row.get("Minutos", "")).strip()
+            freq = str(row.get("Frequência", "")).strip()
+            
+            # --- INTELIGÊNCIA: CONTADOR DE SISTEMAS ---
+            # Se for uma das tabelas de atividade, verifica se cita sistemas
+            if nome_tab in ["Alta Complexidade", "Complexidade Normal", "Baixa Complexidade"]:
+                if any(word in txt_principal for word in keywords_sistemas):
+                    contador_sistemas += 1
+            
+            # Validação de preenchimento completo da linha (Tempo e Frequência)
+            if h_str == "" or m_str == "" or freq == "":
+                pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Preencha a linha completa (Horas, Minutos e Frequência).")
+            
+            # Validação de Setor/Impacto
+            if nome_tab == "Dificuldades" and str(row.get("Setor Envolvido", "")).strip() == "":
+                pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Informe o **Setor Envolvido**.")
+            
+            if nome_tab == "Sugestões e Melhorias" and str(row.get("Impacto Esperado", "")).strip() == "":
+                pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Informe o **Impacto Esperado**.")
+
+# --- 3. VALIDAÇÃO DE SISTEMAS (MÍNIMO 3 ATIVIDADES) ---
+if contador_sistemas < 3:
+    pendencias.append(f"🖥️ **Sistemas**: Detalhe pelo menos **3 atividades** que envolvam uso de sistemas/computador nas tabelas de complexidade (Identificadas: {contador_sistemas}).")
+
+# --- 4. VALIDAÇÃO DO DISC ---
 respostas_vazias = [k for k, v in respostas_disc_atual.items() if v is None]
 if len(respostas_vazias) > 0:
-    pendencias.append(f"Questionário: Faltam responder **{len(respostas_vazias)} questões**.")
+    pendencias.append(f"Questionário: Faltam responder **{len(respostas_vazias)} questões** do DISC.")
 
 # --- EXIBIÇÃO FINAL DO STATUS ---
 if pendencias:
-    st.warning(f"⚠️ **Existem {len(pendencias)} pendências obrigatórias:**")
+    st.warning(f"⚠️ **Atenção Luciano, existem {len(pendencias)} pendências obrigatórias:**")
     for p in pendencias:
-        st.write(f"• {p}")
+        st.error(p)
     st.session_state["confirmacao_final"] = False
 else:
-    st.success("🎉 **Perfeito! Tudo preenchido corretamente. O envio está liberado.**")
-
+    st.success("🎉 **Perfeito! Critérios de Auditoria NetExame atendidos. Envio liberado.**")
 # =========================================================
 # 🚀 4. BOTÃO DE ENVIO E SALVAMENTO REAL (VERSÃO FINAL)
 # =========================================================
@@ -1667,7 +1670,8 @@ with col_btn:
                     "escolaridade": esc_f,
                     "devolver_em": dev_f,
                     "cursos": cursos_f,
-                    "objetivo": obj_f
+                    "objetivo": obj_f,
+                    "sistemas": sistemas_f
                 },
                 "tabelas": {
                     "alta": preparar_dados(e_alta),
