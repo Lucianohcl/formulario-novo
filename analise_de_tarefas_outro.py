@@ -2739,7 +2739,9 @@ if st.button("💾 SALVAR TUDO", use_container_width=True):
             "cargo": cargo, "dep": depto, "setor": setor, 
             "chefe": chefe, "unidade": unidade, 
             "escolaridade": escolaridade, "devolver_em": devolver_em, 
-            "cursos": cursos, "objetivo": objetivo
+            "cursos": cursos, 
+            "objetivo": objetivo, # <--- ADICIONEI A VÍRGULA AQUI
+            "sistemas": sistemas  # <--- AGORA VAI PERSISTIR!
         },
         "tabelas": {
             "alta": e_alta.to_dict("records"), 
@@ -2748,7 +2750,7 @@ if st.button("💾 SALVAR TUDO", use_container_width=True):
             "dificuldades": e_dif.to_dict("records"), 
             "sugestoes": e_sug.to_dict("records")
         },
-        "disc": respostas_disc_final  # <--- AGORA O NOME ESTÁ IGUAL AO QUE VOCÊ CRIOU
+        "disc": respostas_disc_final
     }
 
     # --- CONFIGURAÇÃO DO NOME DO ARQUIVO (A CHAVE DO SUCESSO) ---
