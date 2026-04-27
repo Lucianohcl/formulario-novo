@@ -1377,6 +1377,14 @@ with col2:
 cursos_f = st.text_area("Cursos Obrigatórios e Diferenciais", value=st.session_state.get("f_cursos_v2") or fonte.get("cursos", ""), key="f_cursos_area")
 obj_f = st.text_area("Em que consiste seu Trabalho e qual seu Principal Objetivo", value=st.session_state.get("f_obj_v2") or fonte.get("objetivo", ""), key="f_obj_area")
 
+# --- Novo Campo: Sistemas Utilizados ---
+sistemas_f = st.text_area(
+    "Sistemas Utilizados na Empresa", 
+    value=st.session_state.get("f_sistemas_v2") or fonte.get("sistemas", ""), 
+    placeholder="Liste aqui os softwares, ERPs e ferramentas de automação utilizados...",
+    key="f_sistemas_area"
+)
+
     
 
 # =========================================================
@@ -2550,6 +2558,8 @@ with col2:
 
 cursos = st.text_area("Cursos Obrigatórios e Diferenciais:", value=val("cursos"))
 objetivo = st.text_area("Em que consiste seu trabalho e qual seu Principal Objetivo:", value=val("objetivo"))
+
+sistemas = st.text_area("Sistemas Utilizados na Empresa:", value=val("sistemas"))
 
 
 # =========================================================
