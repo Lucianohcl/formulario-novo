@@ -1314,14 +1314,15 @@ with col1:
                 # Mapeamento: "Chave_do_Widget": "Chave_dentro_do_JSON_campos"
                 campos_map = {
                     "f_cargo": "cargo",
-                    "f_depto": "dep",         # No JSON está "dep", não "departamento"
+                    "f_depto": "dep",         
                     "f_setor": "setor",
                     "f_chefe": "chefe",
                     "f_unidade": "unidade",
                     "f_esc": "escolaridade",
-                    "f_dev": "devolver_em",    # No JSON está "devolver_em"
+                    "f_dev": "devolver_em",   
                     "f_cursos_area": "cursos",
-                    "f_obj_area": "objetivo"
+                    "f_obj_area": "objetivo",
+                    "f_sistemas_area": "sistemas"
                 }
                 
                 for key_ui, key_json in campos_map.items():
