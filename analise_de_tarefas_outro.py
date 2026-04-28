@@ -1535,25 +1535,30 @@ st.session_state["rascunho"]["disc"] = respostas_disc_atual
 
 
 # =========================================================
-# 6. VALIDAÇÃO UNIFICADA (CABECALHO, TABELAS, SISTEMAS E DISC)
+# 6. VALIDAÇÃO UNIFICADA (INTELIGÊNCIA SEMÂNTICA)
 # =========================================================
 st.markdown("---")
 st.subheader("✅ Status de Validação do Formulário")
 
 pendencias = []
 contador_sistemas = 0
-# Novas flags para validar sistemas em Dificuldades e Sugestões
 sistema_nas_dificuldades = False
 sistema_nas_sugestoes = False
 
-# Palavras-chave expandidas para garantir a detecção (UpperCase por padrão)
-keywords_sistemas = [
-    "SISTEMA", "SAP", "EXCEL", "SOFTWARE", "ERP", "SITE", "PLATAFORMA", 
-    "APP", "COMPUTADOR", "DIGITAR", "LANÇAR", "TOTVS", "WINDOWS", 
-    "PLANILHA", "INTERNET", "E-MAIL", "EMAIL", "OUTLOOK", "NAVEGADOR"
+# NÚCLEO DE INTELIGÊNCIA: Verbos de ação, Ferramentas, Documentos e Infraestrutura
+keywords_tecnologia = [
+    # Verbos de Operação Digital
+    "LANÇAR", "DIGITAR", "BAIXAR", "DOWNLOAD", "UPLOAD", "CONCILIAR", "EMITIR", 
+    "CADASTRAR", "GERAR", "ANEXAR", "CONSULTAR", "EXPORTAR", "IMPORTAR", "PROCESSAR",
+    # Ferramentas e Softwares
+    "SISTEMA", "SAP", "EXCEL", "SOFTWARE", "ERP", "SITE", "PLATAFORMA", "APP", "TOTVS", 
+    "WINDOWS", "PLANILHA", "OUTLOOK", "WORD", "BROWSER", "NAVEGADOR", "PORTAL", "DASHBOARD",
+    # Documentos e Termos Técnicos
+    "XML", "PDF", "DANFE", "NF-E", "BOLETO DIGITAL", "E-MAIL", "EMAIL", "INTERNET", 
+    "LINK", "BANCO", "NUVEM", "CLOUD", "TOKEN", "VPN", "BI", "POWERPOINT"
 ]
 
-# --- 1. VALIDAÇÃO DE CABEÇALHO (INCLUINDO NOVO CAMPO SISTEMAS) ---
+# --- 1. VALIDAÇÃO DE CABEÇALHO ---
 campos_id = {
     "Nome": nome_f, "Cargo": cargo_f, "Departamento": depto_f,
     "Escolaridade": esc_f, "Setor": setor_f, "Chefe Imediato": chefe_f,
@@ -1564,88 +1569,75 @@ for campo, valor in campos_id.items():
     if not valor or str(valor).strip() == "":
         pendencias.append(f"Identificação: O campo **{campo}** está vazio.")
 
-# --- 2. VALIDAÇÃO DAS TABELAS (RIGOR TOTAL + REGRAS LUCIANO) ---
+# --- 2. VALIDAÇÃO DAS TABELAS COM ANÁLISE DE CONTEXTO ---
 dict_tabelas = {
-    "Alta Complexidade": e_alta, 
-    "Complexidade Normal": e_normal,
-    "Baixa Complexidade": e_baixa, 
-    "Dificuldades": e_dif,
+    "Alta Complexidade": e_alta, "Complexidade Normal": e_normal,
+    "Baixa Complexidade": e_baixa, "Dificuldades": e_dif,
     "Sugestões e Melhorias": e_sug
 }
 
 regras_colunas = {
-    "Alta Complexidade": "Atividade", 
-    "Complexidade Normal": "Atividade",
-    "Baixa Complexidade": "Atividade", 
-    "Dificuldades": "Dificuldade",
+    "Alta Complexidade": "Atividade", "Complexidade Normal": "Atividade",
+    "Baixa Complexidade": "Atividade", "Dificuldades": "Dificuldade",
     "Sugestões e Melhorias": "Sugestão"
 }
 
 for nome_tab, df_validar in dict_tabelas.items():
-    col_alvo = regras_colunas.get(nome_tab)
-    
+    col_alvo = reglas_colunas.get(nome_tab)
     if df_validar is not None and col_alvo in df_validar.columns:
-        # Identifica linhas onde a descrição foi preenchida
         linhas_ativas = df_validar[df_validar[col_alvo].astype(str).str.strip() != ""]
         
-        # --- REGRA OBRIGATÓRIA: PELO MENOS 2 LINHAS EM DIFICULDADE E SUGESTÃO ---
+        # Regra de quantidade mínima para tabelas críticas
         if nome_tab in ["Dificuldades", "Sugestões e Melhorias"] and len(linhas_ativas) < 2:
-            pendencias.append(f"⚠️ **{nome_tab}**: É obrigatório relatar pelo menos **2 itens** nesta tabela.")
+            pendencias.append(f"⚠️ **{nome_tab}**: É obrigatório relatar pelo menos **2 itens**.")
 
         for i, row in linhas_ativas.iterrows():
-            txt_principal = str(row.get(col_alvo, "")).upper().strip()
-            h_str = str(row.get("Horas", "")).strip()
-            m_str = str(row.get("Minutos", "")).strip()
-            freq = str(row.get("Frequência", "")).strip()
+            # Limpeza e Normalização do Texto para Análise
+            txt_original = str(row.get(col_alvo, "")).upper().strip()
             
-            # --- INTELIGÊNCIA: CONTADOR DE SISTEMAS ---
-            tem_sistema = any(word in txt_principal for word in keywords_sistemas)
+            # Detecção de Tecnologia por Contexto (Verbos + Substantivos)
+            tem_tecnologia = any(word in txt_original for word in keywords_tecnologia)
             
-            # Se for uma das tabelas de atividade, conta quantas citam sistemas
+            # Contagem Inteligente em Atividades Operacionais
             if nome_tab in ["Alta Complexidade", "Complexidade Normal", "Baixa Complexidade"]:
-                if tem_sistema:
+                if tem_tecnologia:
                     contador_sistemas += 1
             
-            # Verifica sistema especificamente em Dificuldades e Sugestões
-            if nome_tab == "Dificuldades" and tem_sistema:
+            # Validação em Dificuldades e Sugestões
+            if nome_tab == "Dificuldades" and tem_tecnologia:
                 sistema_nas_dificuldades = True
-            if nome_tab == "Sugestões e Melhorias" and tem_sistema:
+            if nome_tab == "Sugestões e Melhorias" and tem_tecnologia:
                 sistema_nas_sugestoes = True
             
-            # Validação de preenchimento completo da linha (Tempo e Frequência)
+            # Check de preenchimento completo da linha
+            h_str, m_str = str(row.get("Horas", "")).strip(), str(row.get("Minutos", "")).strip()
+            freq = str(row.get("Frequência", "")).strip()
             if h_str == "" or m_str == "" or freq == "":
-                pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Preencha a linha completa (Horas, Minutos e Frequência).")
-            
-            # Validação de Setor/Impacto
-            if nome_tab == "Dificuldades" and str(row.get("Setor Envolvido", "")).strip() == "":
-                pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Informe o **Setor Envolvido**.")
-            
-            if nome_tab == "Sugestões e Melhorias" and str(row.get("Impacto Esperado", "")).strip() == "":
-                pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Informe o **Impacto Esperado**.")
+                pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Falta preencher Tempo ou Frequência.")
 
-# --- 3. VALIDAÇÃO DE SISTEMAS (REGRAS EXTRAS LUCIANO) ---
+# --- 3. REGRAS DE NEGÓCIO NETEXAME (STATUS FINAL) ---
 if contador_sistemas < 3:
-    pendencias.append(f"🖥️ **Atividades**: Detalhe pelo menos **3 atividades** que envolvam uso de sistemas/computador (Identificadas: {contador_sistemas}).")
+    pendencias.append(f"🖥️ **Tecnologia**: Identificamos apenas {contador_sistemas} atividades tecnológicas. Detalhe processos que envolvam sistemas, lançamentos ou ferramentas digitais (Mínimo: 3).")
 
 if not sistema_nas_dificuldades:
-    pendencias.append("⚠️ **Dificuldades**: Pelo menos uma das 2 dificuldades deve envolver **Sistemas/Tecnologia**.")
+    pendencias.append("⚠️ **Dificuldades**: Relate ao menos uma dificuldade ligada a sistemas, lentidão de rede ou ferramentas de trabalho.")
 
 if not sistema_nas_sugestoes:
-    pendencias.append("⚠️ **Sugestões**: Pelo menos uma das 2 sugestões deve envolver melhoria em **Sistemas/Tecnologia**.")
+    pendencias.append("⚠️ **Sugestões**: Sugira ao menos uma melhoria tecnológica (automação, novo software ou ajuste em planilha).")
 
 # --- 4. VALIDAÇÃO DO DISC ---
 respostas_vazias = [k for k, v in respostas_disc_atual.items() if v is None]
-if len(respostas_vazias) > 0:
-    pendencias.append(f"Questionário: Faltam responder **{len(respostas_vazias)} questões** do DISC.")
+if respostas_vazias:
+    pendencias.append(f"📊 **DISC**: Faltam responder **{len(respostas_vazias)} questões**.")
 
-# --- EXIBIÇÃO FINAL DO STATUS ---
+# --- 5. EXIBIÇÃO DO VEREDITO ---
 if pendencias:
-    st.warning(f"⚠️ **Atenção Luciano, existem {len(pendencias)} pendências obrigatórias:**")
+    st.warning(f"⚠️ **Existem {len(pendencias)} pendências para auditoria:**")
     for p in pendencias:
         st.error(p)
     st.session_state["confirmacao_final"] = False
 else:
-    st.success("🎉 **Perfeito! Critérios de Auditoria NetExame atendidos. Envio liberado.**")
+    st.success("🎉 **Auditoria Concluída! O formulário demonstra uso de tecnologia e maturidade nos relatos. Envio liberado.**")
 
 
 # =========================================================
