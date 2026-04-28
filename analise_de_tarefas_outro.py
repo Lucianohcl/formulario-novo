@@ -1583,7 +1583,7 @@ regras_colunas = {
 }
 
 for nome_tab, df_validar in dict_tabelas.items():
-    col_alvo = reglas_colunas.get(nome_tab)
+    col_alvo = regras_colunas.get(nome_tab)
     if df_validar is not None and col_alvo in df_validar.columns:
         linhas_ativas = df_validar[df_validar[col_alvo].astype(str).str.strip() != ""]
         
