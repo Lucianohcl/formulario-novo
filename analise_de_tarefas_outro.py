@@ -1647,20 +1647,6 @@ if pendencias:
 else:
     st.success("🎉 **Perfeito! Critérios de Auditoria NetExame atendidos. Envio liberado.**")
 
-# --- 4. VALIDAÇÃO DO DISC ---
-respostas_vazias = [k for k, v in respostas_disc_atual.items() if v is None]
-if len(respostas_vazias) > 0:
-    pendencias.append(f"Questionário: Faltam responder **{len(respostas_vazias)} questões** do DISC.")
-
-# --- EXIBIÇÃO FINAL DO STATUS ---
-if pendencias:
-    st.warning(f"⚠️ **Atenção Luciano, existem {len(pendencias)} pendências obrigatórias:**")
-    for p in pendencias:
-        st.error(p)
-    st.session_state["confirmacao_final"] = False
-else:
-    st.success("🎉 **Perfeito! Critérios de Auditoria NetExame atendidos. Envio liberado.**")
-
 
 # =========================================================
 # 🚀 4. BOTÃO DE ENVIO E SALVAMENTO REAL (VERSÃO FINAL)
