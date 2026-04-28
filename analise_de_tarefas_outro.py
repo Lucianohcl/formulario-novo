@@ -1532,6 +1532,7 @@ st.session_state["rascunho"]["disc"] = respostas_disc_atual
 
 
 
+
 # =========================================================
 # 6. VALIDAÇÃO UNIFICADA (CABECALHO, TABELAS, SISTEMAS E DISC)
 # =========================================================
@@ -1540,6 +1541,10 @@ st.subheader("✅ Status de Validação do Formulário")
 
 pendencias = []
 contador_sistemas = 0
+# Novas flags para validar sistemas em Dificuldades e Sugestões
+sistema_nas_dificuldades = False
+sistema_nas_sugestoes = False
+
 # Palavras-chave para a inteligência detectar uso de sistemas/software
 keywords_sistemas = ["SISTEMA", "SAP", "EXCEL", "SOFTWARE", "ERP", "SITE", "PLATAFORMA", "APP", "COMPUTADOR", "DIGITAR", "LANÇAR", "TOTVS", "WINDOWS"]
 
@@ -1572,15 +1577,15 @@ regras_colunas = {
 }
 
 for nome_tab, df_validar in dict_tabelas.items():
-    col_alvo = regras_colunas.get(nome_tab)
+    col_alvo = reglas_colunas.get(nome_tab)
     
     if df_validar is not None and col_alvo in df_validar.columns:
         # Identifica linhas onde a descrição foi preenchida
         linhas_ativas = df_validar[df_validar[col_alvo].astype(str).str.strip() != ""]
         
-        # --- REGRA OBRIGATÓRIA: DIFICULDADE E SUGESTÃO ---
-        if nome_tab in ["Dificuldades", "Sugestões e Melhorias"] and len(linhas_ativas) == 0:
-            pendencias.append(f"⚠️ **{nome_tab}**: É obrigatório relatar pelo menos 1 item nesta tabela.")
+        # --- REGRA OBRIGATÓRIA: PELO MENOS 2 LINHAS EM DIFICULDADE E SUGESTÃO ---
+        if nome_tab in ["Dificuldades", "Sugestões e Melhorias"] and len(linhas_ativas) < 2:
+            pendencias.append(f"⚠️ **{nome_tab}**: É obrigatório relatar pelo menos **2 itens** nesta tabela.")
 
         for i, row in linhas_ativas.iterrows():
             txt_principal = str(row.get(col_alvo, "")).upper()
@@ -1589,10 +1594,18 @@ for nome_tab, df_validar in dict_tabelas.items():
             freq = str(row.get("Frequência", "")).strip()
             
             # --- INTELIGÊNCIA: CONTADOR DE SISTEMAS ---
+            tem_sistema = any(word in txt_principal for word in keywords_sistemas)
+            
             # Se for uma das tabelas de atividade, verifica se cita sistemas
             if nome_tab in ["Alta Complexidade", "Complexidade Normal", "Baixa Complexidade"]:
-                if any(word in txt_principal for word in keywords_sistemas):
+                if tem_sistema:
                     contador_sistemas += 1
+            
+            # Verifica sistema especificamente em Dificuldades e Sugestões
+            if nome_tab == "Dificuldades" and tem_sistema:
+                sistema_nas_dificuldades = True
+            if nome_tab == "Sugestões e Melhorias" and tem_sistema:
+                sistema_nas_sugestoes = True
             
             # Validação de preenchimento completo da linha (Tempo e Frequência)
             if h_str == "" or m_str == "" or freq == "":
@@ -1605,9 +1618,15 @@ for nome_tab, df_validar in dict_tabelas.items():
             if nome_tab == "Sugestões e Melhorias" and str(row.get("Impacto Esperado", "")).strip() == "":
                 pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Informe o **Impacto Esperado**.")
 
-# --- 3. VALIDAÇÃO DE SISTEMAS (MÍNIMO 3 ATIVIDADES) ---
+# --- 3. VALIDAÇÃO DE SISTEMAS (REGRAS EXTRAS LUCIANO) ---
 if contador_sistemas < 3:
-    pendencias.append(f"🖥️ **Sistemas**: Detalhe pelo menos **3 atividades** que envolvam uso de sistemas/computador nas tabelas de complexidade (Identificadas: {contador_sistemas}).")
+    pendencias.append(f"🖥️ **Atividades**: Detalhe pelo menos **3 atividades** com sistemas nas tabelas de complexidade (Identificadas: {contador_sistemas}).")
+
+if not sistema_nas_dificuldades:
+    pendencias.append("⚠️ **Dificuldades**: Pelo menos uma das 2 dificuldades deve envolver **Sistemas/Tecnologia**.")
+
+if not sistema_nas_sugestoes:
+    pendencias.append("⚠️ **Sugestões**: Pelo menos uma das 2 sugestões deve envolver melhoria em **Sistemas/Tecnologia**.")
 
 # --- 4. VALIDAÇÃO DO DISC ---
 respostas_vazias = [k for k, v in respostas_disc_atual.items() if v is None]
@@ -1622,6 +1641,8 @@ if pendencias:
     st.session_state["confirmacao_final"] = False
 else:
     st.success("🎉 **Perfeito! Critérios de Auditoria NetExame atendidos. Envio liberado.**")
+
+
 # =========================================================
 # 🚀 4. BOTÃO DE ENVIO E SALVAMENTO REAL (VERSÃO FINAL)
 # =========================================================
