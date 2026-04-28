@@ -1546,8 +1546,12 @@ contador_sistemas = 0
 sistema_nas_dificuldades = False
 sistema_nas_sugestoes = False
 
-# Palavras-chave para a inteligência detectar uso de sistemas/software
-keywords_sistemas = ["SISTEMA", "SAP", "EXCEL", "SOFTWARE", "ERP", "SITE", "PLATAFORMA", "APP", "COMPUTADOR", "DIGITAR", "LANÇAR", "TOTVS", "WINDOWS"]
+# Palavras-chave expandidas para garantir a detecção (UpperCase por padrão)
+keywords_sistemas = [
+    "SISTEMA", "SAP", "EXCEL", "SOFTWARE", "ERP", "SITE", "PLATAFORMA", 
+    "APP", "COMPUTADOR", "DIGITAR", "LANÇAR", "TOTVS", "WINDOWS", 
+    "PLANILHA", "INTERNET", "E-MAIL", "EMAIL", "OUTLOOK", "NAVEGADOR"
+]
 
 # --- 1. VALIDAÇÃO DE CABEÇALHO (INCLUINDO NOVO CAMPO SISTEMAS) ---
 campos_id = {
@@ -1589,7 +1593,7 @@ for nome_tab, df_validar in dict_tabelas.items():
             pendencias.append(f"⚠️ **{nome_tab}**: É obrigatório relatar pelo menos **2 itens** nesta tabela.")
 
         for i, row in linhas_ativas.iterrows():
-            txt_principal = str(row.get(col_alvo, "")).upper()
+            txt_principal = str(row.get(col_alvo, "")).upper().strip()
             h_str = str(row.get("Horas", "")).strip()
             m_str = str(row.get("Minutos", "")).strip()
             freq = str(row.get("Frequência", "")).strip()
@@ -1597,7 +1601,7 @@ for nome_tab, df_validar in dict_tabelas.items():
             # --- INTELIGÊNCIA: CONTADOR DE SISTEMAS ---
             tem_sistema = any(word in txt_principal for word in keywords_sistemas)
             
-            # Se for uma das tabelas de atividade, verifica se cita sistemas
+            # Se for uma das tabelas de atividade, conta quantas citam sistemas
             if nome_tab in ["Alta Complexidade", "Complexidade Normal", "Baixa Complexidade"]:
                 if tem_sistema:
                     contador_sistemas += 1
@@ -1621,13 +1625,27 @@ for nome_tab, df_validar in dict_tabelas.items():
 
 # --- 3. VALIDAÇÃO DE SISTEMAS (REGRAS EXTRAS LUCIANO) ---
 if contador_sistemas < 3:
-    pendencias.append(f"🖥️ **Atividades**: Detalhe pelo menos **3 atividades** com sistemas nas tabelas de complexidade (Identificadas: {contador_sistemas}).")
+    pendencias.append(f"🖥️ **Atividades**: Detalhe pelo menos **3 atividades** que envolvam uso de sistemas/computador (Identificadas: {contador_sistemas}).")
 
 if not sistema_nas_dificuldades:
     pendencias.append("⚠️ **Dificuldades**: Pelo menos uma das 2 dificuldades deve envolver **Sistemas/Tecnologia**.")
 
 if not sistema_nas_sugestoes:
     pendencias.append("⚠️ **Sugestões**: Pelo menos uma das 2 sugestões deve envolver melhoria em **Sistemas/Tecnologia**.")
+
+# --- 4. VALIDAÇÃO DO DISC ---
+respostas_vazias = [k for k, v in respostas_disc_atual.items() if v is None]
+if len(respostas_vazias) > 0:
+    pendencias.append(f"Questionário: Faltam responder **{len(respostas_vazias)} questões** do DISC.")
+
+# --- EXIBIÇÃO FINAL DO STATUS ---
+if pendencias:
+    st.warning(f"⚠️ **Atenção Luciano, existem {len(pendencias)} pendências obrigatórias:**")
+    for p in pendencias:
+        st.error(p)
+    st.session_state["confirmacao_final"] = False
+else:
+    st.success("🎉 **Perfeito! Critérios de Auditoria NetExame atendidos. Envio liberado.**")
 
 # --- 4. VALIDAÇÃO DO DISC ---
 respostas_vazias = [k for k, v in respostas_disc_atual.items() if v is None]
