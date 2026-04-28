@@ -1535,7 +1535,7 @@ st.session_state["rascunho"]["disc"] = respostas_disc_atual
 
 
 # =========================================================
-# 6. VALIDAÇÃO UNIFICADA (INTELIGÊNCIA SEMÂNTICA)
+# 6. VALIDAÇÃO UNIFICADA (INTELIGÊNCIA SEMÂNTICA + COBERTURA)
 # =========================================================
 st.markdown("---")
 st.subheader("✅ Status de Validação do Formulário")
@@ -1545,15 +1545,17 @@ contador_sistemas = 0
 sistema_nas_dificuldades = False
 sistema_nas_sugestoes = False
 
+# Flags de Cobertura Obrigatória (Pelo menos 1 linha em cada)
+tem_alta = False
+tem_normal = False
+tem_baixa = False
+
 # NÚCLEO DE INTELIGÊNCIA: Verbos de ação, Ferramentas, Documentos e Infraestrutura
 keywords_tecnologia = [
-    # Verbos de Operação Digital
     "LANÇAR", "DIGITAR", "BAIXAR", "DOWNLOAD", "UPLOAD", "CONCILIAR", "EMITIR", 
     "CADASTRAR", "GERAR", "ANEXAR", "CONSULTAR", "EXPORTAR", "IMPORTAR", "PROCESSAR",
-    # Ferramentas e Softwares
     "SISTEMA", "SAP", "EXCEL", "SOFTWARE", "ERP", "SITE", "PLATAFORMA", "APP", "TOTVS", 
     "WINDOWS", "PLANILHA", "OUTLOOK", "WORD", "BROWSER", "NAVEGADOR", "PORTAL", "DASHBOARD",
-    # Documentos e Termos Técnicos
     "XML", "PDF", "DANFE", "NF-E", "BOLETO DIGITAL", "E-MAIL", "EMAIL", "INTERNET", 
     "LINK", "BANCO", "NUVEM", "CLOUD", "TOKEN", "VPN", "BI", "POWERPOINT"
 ]
@@ -1587,18 +1589,21 @@ for nome_tab, df_validar in dict_tabelas.items():
     if df_validar is not None and col_alvo in df_validar.columns:
         linhas_ativas = df_validar[df_validar[col_alvo].astype(str).str.strip() != ""]
         
-        # Regra de quantidade mínima para tabelas críticas
+        # --- CHECK DE COBERTURA POR TABELA ---
+        if len(linhas_ativas) > 0:
+            if nome_tab == "Alta Complexidade": tem_alta = True
+            if nome_tab == "Complexidade Normal": tem_normal = True
+            if nome_tab == "Baixa Complexidade": tem_baixa = True
+
+        # Regra de quantidade mínima para Dificuldades e Sugestões
         if nome_tab in ["Dificuldades", "Sugestões e Melhorias"] and len(linhas_ativas) < 2:
             pendencias.append(f"⚠️ **{nome_tab}**: É obrigatório relatar pelo menos **2 itens**.")
 
         for i, row in linhas_ativas.iterrows():
-            # Limpeza e Normalização do Texto para Análise
             txt_original = str(row.get(col_alvo, "")).upper().strip()
-            
-            # Detecção de Tecnologia por Contexto (Verbos + Substantivos)
             tem_tecnologia = any(word in txt_original for word in keywords_tecnologia)
             
-            # Contagem Inteligente em Atividades Operacionais
+            # Contagem de Sistemas
             if nome_tab in ["Alta Complexidade", "Complexidade Normal", "Baixa Complexidade"]:
                 if tem_tecnologia:
                     contador_sistemas += 1
@@ -1609,36 +1614,42 @@ for nome_tab, df_validar in dict_tabelas.items():
             if nome_tab == "Sugestões e Melhorias" and tem_tecnologia:
                 sistema_nas_sugestoes = True
             
-            # Check de preenchimento completo da linha
+            # Check de preenchimento completo (Tempo e Frequência)
             h_str, m_str = str(row.get("Horas", "")).strip(), str(row.get("Minutos", "")).strip()
             freq = str(row.get("Frequência", "")).strip()
             if h_str == "" or m_str == "" or freq == "":
                 pendencias.append(f"❌ {nome_tab} (Linha {i+1}): Falta preencher Tempo ou Frequência.")
 
-# --- 3. REGRAS DE NEGÓCIO NETEXAME (STATUS FINAL) ---
+# --- 3. NOVAS REGRAS DE COBERTURA OBRIGATÓRIA (LUCIANO) ---
+if not tem_alta:
+    pendencias.append("🚨 **Cobertura**: Você deve descrever pelo menos **1 atividade de Alta Complexidade**.")
+if not tem_normal:
+    pendencias.append("🚨 **Cobertura**: Você deve descrever pelo menos **1 atividade de Complexidade Normal**.")
+if not tem_baixa:
+    pendencias.append("🚨 **Cobertura**: Você deve descrever pelo menos **1 atividade de Baixa Complexidade**.")
+
+# --- 4. REGRAS DE SISTEMAS ---
 if contador_sistemas < 3:
-    pendencias.append(f"🖥️ **Tecnologia**: Identificamos apenas {contador_sistemas} atividades tecnológicas. Detalhe processos que envolvam sistemas, lançamentos ou ferramentas digitais (Mínimo: 3).")
+    pendencias.append(f"🖥️ **Tecnologia**: Identificamos {contador_sistemas} atividades tecnológicas. Detalhe pelo menos **3 processos** que usem sistemas ou ferramentas digitais.")
 
 if not sistema_nas_dificuldades:
-    pendencias.append("⚠️ **Dificuldades**: Relate ao menos uma dificuldade ligada a sistemas, lentidão de rede ou ferramentas de trabalho.")
+    pendencias.append("⚠️ **Dificuldades**: Relate ao menos uma dificuldade ligada a sistemas ou tecnologia.")
 
 if not sistema_nas_sugestoes:
-    pendencias.append("⚠️ **Sugestões**: Sugira ao menos uma melhoria tecnológica (automação, novo software ou ajuste em planilha).")
+    pendencias.append("⚠️ **Sugestões**: Sugira ao menos uma melhoria tecnológica ou de processo digital.")
 
-# --- 4. VALIDAÇÃO DO DISC ---
+# --- 5. VALIDAÇÃO DO DISC E VEREDITO ---
 respostas_vazias = [k for k, v in respostas_disc_atual.items() if v is None]
 if respostas_vazias:
     pendencias.append(f"📊 **DISC**: Faltam responder **{len(respostas_vazias)} questões**.")
 
-# --- 5. EXIBIÇÃO DO VEREDITO ---
 if pendencias:
     st.warning(f"⚠️ **Existem {len(pendencias)} pendências para auditoria:**")
     for p in pendencias:
         st.error(p)
     st.session_state["confirmacao_final"] = False
 else:
-    st.success("🎉 **Auditoria Concluída! O formulário demonstra uso de tecnologia e maturidade nos relatos. Envio liberado.**")
-
+    st.success("🎉 **Auditoria Concluída! O formulário cumpre todos os requisitos de complexidade e tecnologia. Envio liberado.**")
 
 # =========================================================
 # 🚀 4. BOTÃO DE ENVIO E SALVAMENTO REAL (VERSÃO FINAL)
