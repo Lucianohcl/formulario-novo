@@ -2675,7 +2675,7 @@ e_sug = criar_editor("💡 Sugestões", "sugestoes", "Sugestão", "Impacto Esper
 # 6. PERFIL DISC (PERSISTÊNCIA GARANTIDA - CORRIGIDO)
 # =========================================================
 st.markdown("---")
-st.subheader("📊 Questionário DISC")
+st.subheader("📊 Questionário")
 
 # =========================================================
 # 🔥 GARANTE ESTRUTURA
