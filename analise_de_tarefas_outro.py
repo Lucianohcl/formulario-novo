@@ -297,7 +297,7 @@ def gerar_word(form):
                 doc.add_paragraph("Nenhum dado preenchido nesta seção.")
 
     # 3. Avaliação DISC
-    doc.add_heading("📊 Avaliação DISC (Perguntas e Respostas)", level=1)
+    doc.add_heading("📊 Avaliação (Perguntas e Respostas)", level=1)
     for i, pergunta in enumerate(perguntas_disc, 1):
         valor_resposta = form.get(f"Q{i}", "Não respondido")
         doc.add_paragraph(f"{i}. {pergunta}", style='Heading 2')
