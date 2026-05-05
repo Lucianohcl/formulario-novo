@@ -1641,7 +1641,7 @@ if not sistema_nas_sugestoes:
 # --- 5. VALIDAÇÃO DO DISC E VEREDITO ---
 respostas_vazias = [k for k, v in respostas_disc_atual.items() if v is None]
 if respostas_vazias:
-    pendencias.append(f"📊 **DISC**: Faltam responder **{len(respostas_vazias)} questões**.")
+    pendencias.append(f"📊 **Questionário**: Faltam responder **{len(respostas_vazias)} questões**.")
 
 if pendencias:
     st.warning(f"⚠️ **Existem {len(pendencias)} pendências para auditoria:**")
