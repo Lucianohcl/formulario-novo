@@ -2470,366 +2470,513 @@ if st.session_state.get("pagina") == "disc":
 
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import json
+import re
+import requests
 from datetime import datetime
 from github import Github
 
 # =========================================================
-
-# 1. CONFIGURAÇÕES E CONEXÃO
-
+# CONFIGURAÇÃO
 # =========================================================
-
-st.set_page_config(page_title="Formulário Analítico", layout="wide")
-
-
-
-# Puxa o Token dos segredos
-
-TOKEN = st.secrets["DB_TOKEN"]
-
-
+st.set_page_config(page_title="NetExame · Rascunho", layout="wide")
 
 try:
+    DB_TOKEN      = st.secrets["DB_TOKEN"]
+    OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+    REPO_NOME     = "lucianohcl/formulario-colaborador"
+except Exception as e:
+    st.error(f"❌ Secret não encontrado: {e}")
+    st.stop()
 
-    DB_USERNAME = st.secrets["DB_USERNAME"]
+g    = Github(DB_TOKEN)
+repo = g.get_repo(REPO_NOME)
 
-except Exception:
-
-    DB_USERNAME = "lucianohcl"
-
-
-
-# Conecta ao Github
-
-g = Github(TOKEN)
-
-
-
-# ESSE É O PONTO: Coloque o texto direto aqui para não dar erro de "REPO_NOME not defined"
-
-repo = g.get_repo("lucianohcl/formulario-colaborador") 
-
-
-
-# Se precisar do username para outra coisa, use direto dos secrets ou fixo:
-
-
-
-if "rascunho" not in st.session_state: st.session_state["rascunho"] = {}
-
-if "logado" not in st.session_state: st.session_state["logado"] = False
-
-
+# Estado inicial
+for k, v in [("rascunho", {}), ("logado", False), ("etapa_voz", {}), ("pendente", {})]:
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 def val(chave, default=""):
+    d = st.session_state.get("rascunho", {})
+    return d.get("campos", {}).get(chave, d.get(chave, default))
 
-    # Só tenta ler se o rascunho existir, senão ignora
+# =========================================================
+# CSS
+# =========================================================
+st.markdown("""
+<style>
+.mic-wrap { background: #0d1b2a; border: 1px solid #1e3a5f; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+.mic-step { font-size: 13px; color: #7ec8e3; font-weight: 600; margin-bottom: 6px; }
+.mic-btn  { background: linear-gradient(135deg,#1e3a5f,#2d6a9f); color:#fff; border:none; border-radius:7px;
+            padding:8px 20px; font-size:14px; cursor:pointer; transition:all .2s; }
+.mic-btn:hover { background: linear-gradient(135deg,#2d6a9f,#3a8fd1); }
+.mic-btn.rec  { background: linear-gradient(135deg,#7b0000,#cc0000); animation:pulse 1s infinite; }
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.mic-result { background:#071520; border:1px solid #2d6a9f; border-radius:6px;
+              padding:7px 12px; color:#a8d8ea; font-size:13px; margin-top:6px; min-height:32px; }
+.step-badge { display:inline-block; background:#1e3a5f; color:#7ec8e3; border-radius:20px;
+              padding:2px 10px; font-size:11px; font-weight:700; margin-right:6px; }
+.gpt-box   { background:#071a10; border:1px solid #1a5c2a; border-radius:8px;
+             padding:10px 14px; color:#6fcf97; font-size:13px; margin-top:8px; }
+</style>
+""", unsafe_allow_html=True)
 
-    if "rascunho" in st.session_state:
+# =========================================================
+# COMPONENTE DE VOZ
+# =========================================================
+def microfone(uid: str, instrucao: str) -> str:
+    """Renderiza microfone com instrução. Retorna texto capturado via text_input."""
+    key_resultado = f"mic_{uid}"
 
-        d = st.session_state["rascunho"]
+    html = f"""
+    <div class="mic-wrap">
+      <div class="mic-step">🎤 {instrucao}</div>
+      <button class="mic-btn" id="mbtn_{uid}" onclick="startRec_{uid}()">🎤 Clique e fale</button>
+      <div class="mic-result" id="mres_{uid}">Aguardando...</div>
+    </div>
+    <script>
+    (function(){{
+      function startRec_{uid}() {{
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {{ document.getElementById('mres_{uid}').innerText='⚠️ Use Chrome ou Edge'; return; }}
+        var r = new SR();
+        r.lang = 'pt-BR'; r.continuous = false; r.interimResults = false;
+        var btn = document.getElementById('mbtn_{uid}');
+        var res = document.getElementById('mres_{uid}');
+        btn.className='mic-btn rec'; btn.innerText='⏹️ Gravando...';
+        btn.onclick = function(){{ r.stop(); }};
+        r.onresult = function(e){{
+          var txt = e.results[0][0].transcript;
+          res.innerText = '✅ ' + txt;
+          // Injeta no input oculto do Streamlit
+          var inputs = window.parent.document.querySelectorAll('input[type=text]');
+          for(var i=0;i<inputs.length;i++){{
+            if(inputs[i].getAttribute('aria-label') === 'CAPTURA_{uid}'){{
+              var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+              nativeInputValueSetter.call(inputs[i], txt);
+              inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
+              break;
+            }}
+          }}
+        }};
+        r.onerror = function(e){{ res.innerText='❌ '+e.error; }};
+        r.onend   = function(){{ btn.className='mic-btn'; btn.innerText='🎤 Clique e fale'; btn.onclick=startRec_{uid}; }};
+        r.start();
+      }}
+    }})();
+    </script>
+    """
+    components.html(html, height=120)
 
-        return d.get("campos", {}).get(chave, d.get(chave, default))
+    texto = st.text_input(
+        "CAPTURA_" + uid,
+        key=key_resultado,
+        placeholder="Texto aparece aqui após falar — pode editar",
+        label_visibility="collapsed"
+    )
+    return texto.strip()
 
-    return default
+# =========================================================
+# GPT: INTERPRETA TEMPO E FREQUÊNCIA
+# =========================================================
+def interpretar_com_gpt(atividade: str, tempo_fala: str, freq_fala: str,
+                         extra_fala: str = "", tipo_extra: str = "") -> dict:
+    """
+    Envia fala para GPT e retorna dict com campos estruturados.
+    """
+    prompt_extra = ""
+    if tipo_extra and extra_fala:
+        prompt_extra = f'\n- "{tipo_extra}" falado: "{extra_fala}"'
+
+    prompt = f"""
+Você é um assistente que interpreta descrições faladas de atividades profissionais.
+Extraia as informações abaixo e retorne SOMENTE um JSON válido, sem explicações.
+
+Entradas:
+- Atividade/descrição falada: "{atividade}"
+- Tempo falado: "{tempo_fala}"
+- Frequência falada: "{freq_fala}"{prompt_extra}
+
+Retorne EXATAMENTE este JSON:
+{{
+  "atividade": "<descrição limpa da atividade, capitalizada>",
+  "horas": <número inteiro de 0 a 24>,
+  "minutos": <um destes valores: 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55>,
+  "frequencia": "<um destes códigos: DVD, D, S, Q, M, T, A>",
+  "extra": "<valor do campo extra se informado, senão vazio>"
+}}
+
+Regras:
+- Frequência: DVD=várias vezes ao dia, D=diário/todo dia, S=semanal/toda semana,
+  Q=quinzenal/a cada 15 dias, M=mensal/todo mês, T=trimestral, A=anual/uma vez por ano
+- Se não conseguir interpretar frequência, use "D"
+- Se não conseguir interpretar tempo, use horas=1 e minutos=0
+- Minutos: arredonde para o múltiplo de 5 mais próximo
+- Atividade: remova vícios de linguagem, capitalize corretamente
+"""
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type":  "application/json"
+        }
+        body = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "max_tokens": 200
+        }
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers, json=body, timeout=15
+        )
+        conteudo = resp.json()["choices"][0]["message"]["content"]
+        # Remove possíveis blocos de código
+        conteudo = re.sub(r"```[a-z]*", "", conteudo).replace("```", "").strip()
+        return json.loads(conteudo)
+    except Exception as e:
+        st.warning(f"⚠️ GPT não respondeu ({e}). Preenchimento manual necessário.")
+        return {
+            "atividade": atividade,
+            "horas": 1, "minutos": 0,
+            "frequencia": "D",
+            "extra": extra_fala
+        }
+
+# =========================================================
+# MOTOR DE TABELA COM VOZ GUIADA EM ETAPAS
+# =========================================================
+lista_freq = ["", "DVD", "D", "S", "Q", "M", "T", "A"]
+lista_h    = [""] + [f"{i} h" for i in range(25)]
+lista_m    = [""] + [f"{i} min" for i in range(0, 60, 5)]
+
+def tabela_com_voz_guiada(titulo, chave, col_p, col_e=None, nome_e=None,
+                           label_col_p="atividade", label_extra=None, icone="📋"):
+    st.markdown(f"### {icone} {titulo}")
+
+    # --- Legenda compacta ---
+    with st.expander("ℹ️ Legenda", expanded=False):
+        st.markdown("""
+        **Frequência:** DVD=Diário várias vezes · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual  
+        **Tempo:** Horas + Minutos. Menos de 1h → 0h + minutos reais.
+        """)
+
+    # --- Carrega dados do rascunho ---
+    rascunho = st.session_state.get("rascunho", {})
+    dados    = rascunho.get("tabelas", {}).get(chave, [])
+
+    cols_def = [col_p] + ([col_e] if col_e else []) + ["Horas", "Minutos", "Frequência"]
+    df = pd.DataFrame(dados).reindex(columns=cols_def, fill_value="")
+    while len(df) < 15:
+        df.loc[len(df)] = [""] * len(cols_def)
+    df = df[cols_def].head(15).fillna("").astype(str)
+
+    # ---- PAINEL DE VOZ GUIADA ----
+    st.markdown(f"""
+    <div style='background:#0a1628;border:1px solid #1e3a5f;border-radius:10px;padding:16px;margin-bottom:16px;'>
+      <div style='color:#7ec8e3;font-weight:700;font-size:15px;margin-bottom:10px;'>
+        🎙️ Adicionar via voz — siga os passos abaixo
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    uid_base = chave
+
+    # PASSO 1 — Atividade / Descrição principal
+    st.markdown(f"<span class='step-badge'>PASSO 1</span> Descreva a **{label_col_p}**", unsafe_allow_html=True)
+    fala_principal = microfone(f"{uid_base}_p1", f"Descreva a {label_col_p}")
+
+    # PASSO EXTRA — Setor/Impacto (só para dificuldades e sugestões)
+    fala_extra = ""
+    if col_e and label_extra:
+        st.markdown(f"<span class='step-badge'>PASSO 2</span> Informe o **{label_extra}**", unsafe_allow_html=True)
+        fala_extra = microfone(f"{uid_base}_extra", f"Qual é o {label_extra}?")
+        passo_tempo = "PASSO 3"
+        passo_freq  = "PASSO 4"
+    else:
+        passo_tempo = "PASSO 2"
+        passo_freq  = "PASSO 3"
+
+    # PASSO TEMPO
+    st.markdown(f"<span class='step-badge'>{passo_tempo}</span> Quanto **tempo** leva? Ex: *'duas horas'*, *'trinta minutos'*, *'uma hora e meia'*", unsafe_allow_html=True)
+    fala_tempo = microfone(f"{uid_base}_tempo", "Quanto tempo leva? Ex: duas horas, trinta minutos")
+
+    # PASSO FREQUÊNCIA
+    st.markdown(f"<span class='step-badge'>{passo_freq}</span> Com que **frequência**? Ex: *'todo dia'*, *'toda semana'*, *'uma vez por mês'*", unsafe_allow_html=True)
+    fala_freq = microfone(f"{uid_base}_freq", "Com que frequência? Ex: todo dia, toda semana, mensal")
+
+    # BOTÃO INTERPRETAR + ADICIONAR
+    st.markdown("")
+    col_btn1, col_btn2 = st.columns([2, 1])
+
+    with col_btn1:
+        if st.button(f"✨ Interpretar com IA e adicionar à tabela", key=f"btn_gpt_{chave}", use_container_width=True):
+            if not fala_principal:
+                st.warning("⚠️ Fale ou digite a descrição no Passo 1 antes de continuar.")
+            elif not fala_tempo or not fala_freq:
+                st.warning("⚠️ Preencha também o tempo e a frequência.")
+            else:
+                with st.spinner("🧠 GPT interpretando sua fala..."):
+                    resultado = interpretar_com_gpt(
+                        atividade   = fala_principal,
+                        tempo_fala  = fala_tempo,
+                        freq_fala   = fala_freq,
+                        extra_fala  = fala_extra,
+                        tipo_extra  = label_extra or ""
+                    )
+
+                # Mostra o que o GPT interpretou
+                st.markdown(f"""
+                <div class="gpt-box">
+                  ✅ <b>GPT interpretou:</b><br>
+                  📝 {resultado.get('atividade','')}<br>
+                  ⏱️ {resultado.get('horas',0)}h {resultado.get('minutos',0)}min &nbsp;|&nbsp;
+                  📅 {resultado.get('frequencia','D')}
+                  {f"&nbsp;|&nbsp; 🏢 {resultado.get('extra','')}" if resultado.get('extra') else ''}
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Encontra próxima linha vazia
+                linha_vazia = None
+                for idx, row in df.iterrows():
+                    if str(row[col_p]).strip() == "":
+                        linha_vazia = idx
+                        break
+
+                if linha_vazia is not None:
+                    df.at[linha_vazia, col_p] = resultado.get("atividade", fala_principal)
+                    df.at[linha_vazia, "Horas"]     = f"{resultado.get('horas', 1)} h"
+                    df.at[linha_vazia, "Minutos"]   = f"{resultado.get('minutos', 0)} min"
+                    df.at[linha_vazia, "Frequência"]= resultado.get("frequencia", "D")
+                    if col_e and resultado.get("extra"):
+                        df.at[linha_vazia, col_e] = resultado.get("extra", "")
+
+                    # Persiste no rascunho
+                    if "tabelas" not in st.session_state["rascunho"]:
+                        st.session_state["rascunho"]["tabelas"] = {}
+                    st.session_state["rascunho"]["tabelas"][chave] = df.to_dict("records")
+                    st.success(f"✅ Linha {linha_vazia + 1} preenchida automaticamente!")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Tabela cheia (15 linhas). Edite diretamente abaixo.")
+
+    with col_btn2:
+        if st.button("🗑️ Limpar campos de voz", key=f"btn_clear_{chave}", use_container_width=True):
+            for sufixo in ["p1", "extra", "tempo", "freq"]:
+                k = f"mic_{chave}_{sufixo}"
+                if k in st.session_state:
+                    st.session_state[k] = ""
+            st.rerun()
+
+    # ---- TABELA EDITÁVEL (revisão manual) ----
+    st.markdown("##### ✏️ Revise ou edite diretamente na tabela:")
+
+    cfg = {
+        col_p:        st.column_config.TextColumn("Descrição", width="large"),
+        "Frequência": st.column_config.SelectboxColumn("Frequência", options=lista_freq, width="small"),
+        "Horas":      st.column_config.SelectboxColumn("Horas",      options=lista_h,    width="small"),
+        "Minutos":    st.column_config.SelectboxColumn("Minutos",    options=lista_m,    width="small"),
+    }
+    if col_e:
+        cfg[col_e] = st.column_config.TextColumn(nome_e or col_e, width="medium")
+
+    editor = st.data_editor(
+        df, key=f"ed_{chave}_vg",
+        column_config=cfg,
+        use_container_width=True,
+        num_rows="fixed"
+    )
+
+    st.markdown("---")
+    return editor
 
 
 # =========================================================
-# 2. IDENTIFICAÇÃO E CARREGAMENTO (VERSÃO BLINDADA)
+# IDENTIFICAÇÃO E CARREGAMENTO
 # =========================================================
-st.subheader("📋 Acesso ao Rascunho")
-nome_input = st.text_input("DIGITE SEU NOME COMPLETO:").strip().upper()
-# ADICIONE ESTA LINHA ABAIXO:
-nome_digitado = nome_input
+st.title("📋 NetExame · Rascunho")
+st.caption("Preencha por voz ou manualmente — Chrome/Edge com microfone necessário para voz")
+
+st.subheader("👤 Identificação")
+nome_input = st.text_input("NOME COMPLETO:", value=st.session_state.get("nome_colab", "")).strip().upper()
 
 if not nome_input:
     st.info("Digite seu nome para começar.")
     st.stop()
 
+st.session_state["nome_colab"] = nome_input
 nome_arq = f"rascunhos/{nome_input.replace(' ', '_')}.json"
 
 if st.session_state.get("usuario_atual") != nome_input:
     st.session_state["usuario_atual"] = nome_input
-    st.session_state["logado"] = False
+    st.session_state["logado"]        = False
 
-confirmar = st.checkbox("✅ CLIQUE PARA CARREGAR MEUS DADOS")
+confirmar = st.checkbox("✅ Carregar meus dados salvos")
 
 if confirmar and not st.session_state.get("logado"):
     try:
         conteudo = repo.get_contents(nome_arq)
         dados_carregados = json.loads(conteudo.decoded_content.decode())
-        # Garante que o rascunho seja EXATAMENTE o que está no GitHub
         st.session_state["rascunho"] = dados_carregados
-        st.success("Dados recuperados!")
+        st.success(f"✅ Rascunho de {nome_input} carregado!")
     except:
-        st.session_state["rascunho"] = {"colaborador": nome_input, "campos": {}, "tabelas": {}, "disc": {}}
-        st.info("Iniciando novo rascunho.")
-    
+        st.session_state["rascunho"] = {
+            "colaborador": nome_input,
+            "campos": {}, "tabelas": {}, "disc": {}
+        }
+        st.info("Nenhum rascunho encontrado. Iniciando novo.")
     st.session_state["logado"] = True
     st.rerun()
 
-# Se não confirmou, para aqui
 if not st.session_state["logado"]:
     st.stop()
 
 # =========================================================
-# 3. FORMULÁRIO: CAMPOS DE TEXTO
+# CAMPOS DE IDENTIFICAÇÃO
 # =========================================================
 st.markdown("---")
 col1, col2 = st.columns(2)
 with col1:
-    cargo = st.text_input("Cargo:", value=val("cargo"))
-    depto = st.text_input("Departamento:", value=val("dep"))
-    setor = st.text_input("Setor:", value=val("setor"))
+    cargo        = st.text_input("Cargo:",           value=val("cargo"))
+    depto        = st.text_input("Departamento:",    value=val("dep"))
+    setor        = st.text_input("Setor:",           value=val("setor"))
 with col2:
-    chefe = st.text_input("Chefe imediato:", value=val("chefe"))
-    unidade = st.text_input("Empresa / Unidade:", value=val("unidade"))
-    escolaridade = st.text_input("Escolaridade:", value=val("escolaridade"))
-    devolver_em = st.text_input("Devolver em:", value=val("devolver_em"))
+    chefe        = st.text_input("Chefe imediato:",  value=val("chefe"))
+    unidade      = st.text_input("Empresa/Unidade:", value=val("unidade"))
+    escolaridade = st.text_input("Escolaridade:",    value=val("escolaridade"))
+    devolver_em  = st.text_input("Devolver em:",     value=val("devolver_em"))
 
-cursos = st.text_area("Cursos Obrigatórios e Diferenciais:", value=val("cursos"))
+cursos   = st.text_area("Cursos Obrigatórios e Diferenciais:", value=val("cursos"))
 objetivo = st.text_area("Em que consiste seu trabalho e qual seu Principal Objetivo:", value=val("objetivo"))
-
 sistemas = st.text_area("Sistemas Utilizados na Empresa:", value=val("sistemas"))
 
-
 # =========================================================
-# 4. MOTOR DE TABELAS (VERSÃO ULTRA-BLINDADA V3)
-# =========================================================
-def criar_editor(titulo, chave, col_p, col_e=None, nome_e=None):
-    # --- 1. RESET DE MEMÓRIA (FORÇA O STREAMLIT A REDESENHAR O LAYOUT) ---
-    # Se a v3 ainda não existe no estado da sessão, limpamos as versões antigas
-    if f"ed_{chave}_v3" not in st.session_state:
-        for k in list(st.session_state.keys()):
-            if f"ed_{chave}" in k:
-                del st.session_state[k]
-
-    st.write(f"**{titulo}**")
-    
-    # 2. Puxa os dados do rascunho
-    dados = st.session_state["rascunho"].get("tabelas", {}).get(chave, [])
-    df = pd.DataFrame(dados)
-    
-    # 3. Define a Ordem Rígida (O Setor/Impacto TEM que ser a segunda coluna)
-    if col_e:
-        cols_finais = [col_p, col_e, "Horas", "Minutos", "Frequência"]
-    else:
-        cols_finais = [col_p, "Horas", "Minutos", "Frequência"]
-    
-    # 4. Limpeza e Reindex (Remove colunas fantasmas e organiza a ordem)
-    df = df.fillna("").astype(str)
-    for c in df.columns:
-        df[c] = df[c].str.strip()
-    
-    # O reindex com columns=cols_finais descarta qualquer coluna que não esteja na lista
-    df = df.reindex(columns=cols_finais, fill_value="")
-    
-    # 5. Garante as 15 linhas fixas
-    if len(df) < 15:
-        faltam = 15 - len(df)
-        extras = pd.DataFrame([{c: "" for c in cols_finais} for _ in range(faltam)])
-        df = pd.concat([df, extras], ignore_index=True)
-    
-    # Trava em 15 linhas e na ordem correta
-    df = df[cols_finais].head(15)
-
-    # 6. Configuração Visual dos Seletores
-    cfg = {
-        col_p: st.column_config.TextColumn("Descrição", width="large"),
-        "Frequência": st.column_config.SelectboxColumn(
-            options=["", "DVD", "D", "S", "Q", "M", "T", "A"], 
-            width="small"
-        ),
-        "Horas": st.column_config.SelectboxColumn(
-            options=[""] + [f"{i} h" for i in range(25)], 
-            width="small"
-        ),
-        "Minutos": st.column_config.SelectboxColumn(
-            options=[""] + [f"{i} min" for i in range(0, 60, 5)], 
-            width="small"
-        ),
-    }
-    if col_e: 
-        cfg[col_e] = st.column_config.TextColumn(nome_e, width="medium")
-        
-    # 7. Renderização com a Key v3 (O segredo para resetar o visual)
-    return st.data_editor(
-        df, 
-        key=f"ed_{chave}_v3", 
-        column_config=cfg, 
-        use_container_width=True,
-        num_rows="fixed"
-    )
-
-# Chamadas das tabelas
-e_alta = criar_editor("🚀 Alta Complexidade", "alta", "Atividade")
-e_normal = criar_editor("📋 Complexidade Normal", "normal", "Atividade")
-e_baixa = criar_editor("⏳ Baixa Complexidade", "baixa", "Atividade")
-e_dif = criar_editor("⚠️ Dificuldades", "dificuldades", "Dificuldade", "Setor Envolvido")
-e_sug = criar_editor("💡 Sugestões", "sugestoes", "Sugestão", "Impacto Esperado")
-
-
-# =========================================================
-# 6. PERFIL DISC (PERSISTÊNCIA GARANTIDA - CORRIGIDO)
+# 5 TABELAS COM VOZ GUIADA
 # =========================================================
 st.markdown("---")
-st.subheader("📊 Questionário")
+st.subheader("📋 Tabelas de Atividades")
+
+st.info("""
+**Como funciona:**
+1. 🎤 Fale a atividade → 🎤 Fale o tempo → 🎤 Fale a frequência
+2. Clique em **✨ Interpretar com IA** — o GPT preenche a linha automaticamente
+3. Revise na tabela se precisar ajustar algo
+""")
+
+e_alta   = tabela_com_voz_guiada(
+    "Atividades de Alta Complexidade", "alta",
+    col_p="Atividade", label_col_p="atividade de alta complexidade", icone="🚀"
+)
+e_normal = tabela_com_voz_guiada(
+    "Atividades de Complexidade Normal", "normal",
+    col_p="Atividade", label_col_p="atividade de complexidade normal", icone="📋"
+)
+e_baixa  = tabela_com_voz_guiada(
+    "Atividades de Baixa Complexidade", "baixa",
+    col_p="Atividade", label_col_p="atividade de baixa complexidade", icone="⏳"
+)
+e_dif    = tabela_com_voz_guiada(
+    "Dificuldades e Bloqueios", "dificuldades",
+    col_p="Dificuldade", col_e="Setor Envolvido", nome_e="Setor Envolvido",
+    label_col_p="dificuldade ou bloqueio", label_extra="Setor Envolvido", icone="⚠️"
+)
+e_sug    = tabela_com_voz_guiada(
+    "Sugestões de Melhoria", "sugestoes",
+    col_p="Sugestão", col_e="Impacto Esperado", nome_e="Impacto Esperado",
+    label_col_p="sugestão de melhoria", label_extra="Impacto Esperado", icone="💡"
+)
 
 # =========================================================
-# 🔥 GARANTE ESTRUTURA
+# BARRA DE PROGRESSO
 # =========================================================
-if "rascunho_atual" not in st.session_state:
-    st.session_state["rascunho_atual"] = {}
+st.markdown("---")
+st.subheader("📊 Progresso do Preenchimento")
 
-if "disc" not in st.session_state["rascunho_atual"]:
-    st.session_state["rascunho_atual"]["disc"] = {}
+def contar(df, col):
+    if df is None: return 0
+    return int(df[col].astype(str).str.strip().ne("").sum())
 
-# Recupera o dicionário salvo do rascunho (Garante chaves como string)
-disc_data = {
-    str(k): v for k, v in st.session_state["rascunho_atual"]["disc"].items()
-}
+total_ativ = contar(e_alta,"Atividade") + contar(e_normal,"Atividade") + contar(e_baixa,"Atividade")
+total_dif  = contar(e_dif, "Dificuldade")
+total_sug  = contar(e_sug, "Sugestão")
+campos_ok  = sum(1 for c in [cargo,depto,setor,chefe,unidade,escolaridade,devolver_em,objetivo,sistemas]
+                 if str(c).strip() != "")
 
-# Pegamos o nome do colaborador para resetar os campos se mudar de pessoa
-nome_colab = st.session_state.get("nome_colaborador", "novo")
+c1,c2,c3,c4 = st.columns(4)
+c1.metric("📝 Campos básicos",    f"{campos_ok}/9")
+c2.metric("🔵 Atividades",        f"{total_ativ}")
+c3.metric("⚠️ Dificuldades",     f"{total_dif}/2 mín.")
+c4.metric("💡 Sugestões",         f"{total_sug}/2 mín.")
 
-# =========================================================
-# 📋 LISTA DE PERGUNTAS (EXATA PARA ESPELHAMENTO)
-# =========================================================
-perguntas_disc = [
-    "Quando surge um problema inesperado: (A) Age rápido | (B) Comunica a todos | (C) Analisa riscos | (D) Segue processo",
-    "Em situações de pressão: (A) Foca no resultado | (B) Mantém o otimismo | (C) Mantém a calma | (D) Busca precisão",
-    "Ao receber tarefa difícil: (A) Aceita o desafio | (B) Busca ajuda social | (C) Planeja passos | (D) Estuda as regras",
-    "No trabalho em equipe: (A) Lidera o grupo | (B) Motiva os colegas | (C) Apoia os outros | (D) Organiza as tarefas",
-    "Em reuniões: (A) Vai direto ao ponto | (B) Interage e brinca | (C) Escuta mais | (D) Anota detalhes",
-    "Ao lidar com conflitos: (A) Enfrenta direto | (B) Tenta apaziguar | (C) Evita o confronto | (D) Usa lógica e fatos",
-    "Seu ritmo de trabalho: (A) Rápido/Impaciente | (B) Rápido/Entusiasmado | (C) Calmo/Constante | (D) Metódico/Cauteloso",
-    "Prefere tarefas: (A) Desafiadoras | (B) Variadas e sociais | (C) Rotineiras e seguras | (D) Técnicas e detalhadas",
-    "Seu foco principal: (A) Resultados | (B) Relacionamentos | (C) Estabilidade | (D) Qualidade e Processos",
-    "Ao decidir, você é: (A) Decidido e firme | (B) Impulsivo e intuitivo | (C) Cuidadoso e lento | (D) Lógico e analítico",
-    "Confia mais em: (A) Sua intuição | (B) Opinião alheia | (C) Experiência passada | (D) Dados e provas",
-    "Prefere decisões: (A) Independentes | (B) Em grupo | (C) Consensuais | (D) Baseadas em normas",
-    "Estilo de organização: (A) Prático | (B) Criativo/Bagunçado | (C) Tradicional | (D) Muito organizado",
-    "Lida melhor com: (A) Mudanças rápidas | (B) Novas ideias | (C) Rotinas claras | (D) Regras rígidas",
-    "Prefere trabalhar: (A) Sozinho/Comando | (B) Ambiente festivo | (C) Ambiente tranquilo | (D) Ambiente silencioso",
-    "Seu ponto forte: (A) Coragem | (B) Comunicação | (C) Paciência | (D) Organização",
-    "Você se considera: (A) Dominante | (B) Influente | (C) Estável | (D) Conforme/Analítico",
-    "Se motiva por: (A) Poder/Bônus | (B) Reconhecimento | (C) Segurança/Paz | (D) Conhecimento Técnico",
-    "Reação a cobranças: (A) Mais esforço | (B) Desculpas criativas | (C) Ansiedade | (D) Argumentos técnicos",
-    "Ambiente ideal: (A) Competitivo | (B) Amigável | (C) Previsível | (D) Disciplinado",
-    "Ao lidar com feedback: (A) Aceita e ajusta | (B) Comenta e debate | (C) Analisa e planeja | (D) Segue regras",
-    "Como prefere aprender: (A) Fazendo | (B) Interagindo | (C) Observando | (D) Estudando materiais",
-    "Gestão de tempo: (A) Prioriza resultados | (B) Mantém relações | (C) Planeja com cuidado | (D) Segue processos",
-    "Como se comunica: (A) Direto e objetivo | (B) Amigável e motivador | (C) Calmo e ponderado | (D) Técnico e detalhista"
-]
+prog = min(
+    (campos_ok/9*0.3) + (min(total_ativ,10)/10*0.4) +
+    (min(total_dif,2)/2*0.15) + (min(total_sug,2)/2*0.15), 1.0
+)
+st.progress(prog, text=f"Rascunho {int(prog*100)}% completo")
 
 # =========================================================
-# 🎯 DEFINIÇÕES E RENDER (SINCRONIZADO)
+# SALVAMENTO NO GITHUB
 # =========================================================
-opcoes = ["A", "B", "C", "D"]
-respostas_disc_final = {} # Nome correto para evitar o NameError
+st.markdown("---")
+if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
 
-for i, pergunta in enumerate(perguntas_disc):
-    chave = str(i)
-    
-    # Busca a letra no banco. Se não houver, retorna None para ficar desmarcado
-    letra_banco = disc_data.get(chave)
-    
-    # Define o índice da bolinha (A=0, B=1, C=2, D=3)
-    idx = opcoes.index(letra_banco) if letra_banco in opcoes else None
-
-    respostas_disc_final[chave] = st.radio(
-        f"**{i+1}. {pergunta}**",
-        options=opcoes,
-        index=idx,
-        horizontal=True,
-        key=f"disc_{nome_colab}_{i}" # Key dinâmica para resetar ao trocar colaborador
-    )
-
-# =========================================================
-# 💾 PERSISTÊNCIA AUTOMÁTICA
-# =========================================================
-st.session_state["rascunho_atual"]["disc"] = respostas_disc_final
-
-
-
-# =========================================================
-# 6. SALVAMENTO (GITHUB)
-# =========================================================
-if st.button("💾 SALVAR TUDO", use_container_width=True):
-
-    # --- VALIDAÇÃO CRÍTICA ---
     if not nome_input or len(nome_input) < 3:
-        st.error("⚠️ Erro: Nome do colaborador está vazio ou inválido.")
+        st.error("⚠️ Nome inválido.")
         st.stop()
 
-    # 1. Monta o payload (O "corpo" do arquivo)
     payload = {
-        "colaborador": nome_input, 
-        "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "colaborador": nome_input,
+        "timestamp":   datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         "campos": {
-            "cargo": cargo, "dep": depto, "setor": setor, 
-            "chefe": chefe, "unidade": unidade, 
-            "escolaridade": escolaridade, "devolver_em": devolver_em, 
-            "cursos": cursos, 
-            "objetivo": objetivo, # <--- ADICIONEI A VÍRGULA AQUI
-            "sistemas": sistemas  # <--- AGORA VAI PERSISTIR!
+            "cargo": cargo, "dep": depto, "setor": setor,
+            "chefe": chefe, "unidade": unidade,
+            "escolaridade": escolaridade, "devolver_em": devolver_em,
+            "cursos": cursos, "objetivo": objetivo, "sistemas": sistemas
         },
         "tabelas": {
-            "alta": e_alta.to_dict("records"), 
-            "normal": e_normal.to_dict("records"), 
-            "baixa": e_baixa.to_dict("records"), 
-            "dificuldades": e_dif.to_dict("records"), 
-            "sugestoes": e_sug.to_dict("records")
+            "alta":         e_alta.to_dict("records"),
+            "normal":       e_normal.to_dict("records"),
+            "baixa":        e_baixa.to_dict("records"),
+            "dificuldades": e_dif.to_dict("records"),
+            "sugestoes":    e_sug.to_dict("records")
         },
-        "disc": respostas_disc_final
+        "disc": st.session_state.get("rascunho", {}).get("disc", {})
     }
 
-    # --- CONFIGURAÇÃO DO NOME DO ARQUIVO (A CHAVE DO SUCESSO) ---
-    nome_limpo = nome_input.strip().replace(" ", "_").upper()
-    caminho_github = f"rascunhos/{nome_limpo}.json" # Garante que vai para a pasta rascunhos
+    nome_limpo     = nome_input.replace(" ", "_").upper()
+    caminho_github = f"rascunhos/{nome_limpo}.json"
+    conteudo_json  = json.dumps(payload, ensure_ascii=False, indent=4)
 
     try:
-        # --- AÇÃO 1: GITHUB (ENVIO REAL PARA O REPOSITÓRIO) ---
-        conteudo_json = json.dumps(payload, indent=4, ensure_ascii=False)
-        
         try:
-            # Tenta atualizar se já existir
             f = repo.get_contents(caminho_github)
             repo.update_file(f.path, f"Update: {nome_input}", conteudo_json, f.sha)
         except:
-            # Cria novo se não existir
             repo.create_file(caminho_github, f"Novo: {nome_input}", conteudo_json)
-        
-        # Salva no estado da sessão para uso imediato
-        st.session_state["rascunho"] = payload
-        st.success(f"✅ {nome_input} salvo com sucesso no GitHub!")
 
-        # === COLOQUE AQUI O BOTÃO DE DOWNLOAD ===
+        st.session_state["rascunho"] = payload
+        st.success(f"✅ Rascunho de {nome_input} salvo com sucesso!")
+
         st.download_button(
-            label="📥 Baixar Arquivo JSON do Rascunho",
-            data=conteudo_json.encode('utf-8'), # Usa a variável que você já criou acima
-            file_name=f"{nome_limpo}.json",
+            label="📥 Baixar cópia JSON",
+            data=conteudo_json.encode("utf-8"),
+            file_name=f"{nome_limpo}_rascunho.json",
             mime="application/json",
             use_container_width=True
         )
-        # =========================================
-
-        # --- AÇÃO 2: SHEETS ---
-        if enviar_para_sheets(payload):
-            st.toast("📊 Espelhado no Sheets!", icon="📈")
-        else:
-            st.warning("⚠️ Salvo no GitHub, mas Sheets não respondeu.")
 
     except Exception as e:
-        st.error(f"⚠️ Erro ao salvar: {e}")
-        # Botão de emergência caso o GitHub falhe
+        st.error(f"❌ Erro ao salvar: {e}")
         st.download_button(
-            label="📥 Baixar Backup de Emergência",
-            data=json.dumps(payload, indent=4, ensure_ascii=False).encode('utf-8'),
+            label="📥 Backup de Emergência",
+            data=conteudo_json.encode("utf-8"),
             file_name=f"{nome_limpo}_EMERGENCIA.json",
             mime="application/json",
             use_container_width=True
         )
-# Versao_Final_06_04
+
+st.caption("NetExame · Rascunho com voz guiada — o formulário principal continua funcionando normalmente para envio final.")
+
