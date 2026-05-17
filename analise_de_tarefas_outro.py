@@ -7,6 +7,7 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from statistics import mean
 
 # PDF
@@ -2723,7 +2724,7 @@ if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_widt
 
     payload = {
         "colaborador": nome_input,
-        "timestamp":   datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "timestamp":   datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S"),
         "campos": {
             "cargo":        cargo,
             "dep":          depto,
