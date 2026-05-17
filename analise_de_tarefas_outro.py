@@ -2472,43 +2472,54 @@ if st.session_state.get("pagina") == "disc":
 import streamlit as st
 import pandas as pd
 import json
-import requests
 from datetime import datetime
 from github import Github
 
 # =========================================================
 # CONFIGURAÇÃO
 # =========================================================
-st.set_page_config(page_title="NetExame · Rascunho", layout="wide")
+st.set_page_config(
+    page_title="NetExame · Rascunho",
+    layout="wide"
+)
 
 try:
-    DB_TOKEN       = st.secrets["DB_TOKEN"]
+    DB_TOKEN = st.secrets["DB_TOKEN"]
     OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-    REPO_NOME      = "lucianohcl/formulario-colaborador"
+    REPO_NOME = "lucianohcl/formulario-colaborador"
+
 except Exception as e:
     st.error(f"❌ Secret não encontrado: {e}")
     st.stop()
 
-g    = Github(DB_TOKEN)
+g = Github(DB_TOKEN)
 repo = g.get_repo(REPO_NOME)
 
-for k, v in [("rascunho", {}), ("logado", False)]:
+# =========================================================
+# SESSION STATE
+# =========================================================
+for k, v in [
+    ("rascunho", {}),
+    ("logado", False)
+]:
     if k not in st.session_state:
         st.session_state[k] = v
+
 
 def val(chave, default=""):
     d = st.session_state.get("rascunho", {})
     return d.get("campos", {}).get(chave, d.get(chave, default))
 
+
 # =========================================================
 # LISTAS
 # =========================================================
 lista_freq = ["", "DVD", "D", "S", "Q", "M", "T", "A"]
-lista_h    = [""] + [f"{i} h" for i in range(25)]
-lista_m    = [""] + [f"{i} min" for i in range(0, 60, 5)]
+lista_h = [""] + [f"{i} h" for i in range(25)]
+lista_m = [""] + [f"{i} min" for i in range(0, 60, 5)]
 
 # =========================================================
-# PERGUNTAS QUESTIONÁRIO
+# QUESTIONÁRIO
 # =========================================================
 perguntas_disc = [
     "Quando surge um problema inesperado: (A) Age rápido | (B) Comunica a todos | (C) Analisa riscos | (D) Segue processo",
@@ -2538,90 +2549,157 @@ perguntas_disc = [
 ]
 
 # =========================================================
-# BOTÃO DE VOZ — injeta texto E clica no botão salvar
+# VOZ
 # =========================================================
-def campo_voz_autoclick(uid: str, instrucao: str, btn_label: str) -> str:
-    """
-    Após reconhecer a fala:
-    1. Injeta no input pelo placeholder
-    2. Automaticamente clica no botão cujo texto contenha btn_label
-    """
+def campo_voz_autoclick(uid: str, instrucao: str, btn_label: str):
+
     key_st = f"voz_{uid}"
     placeholder_unico = f"__voz__{uid}__"
 
     html = f"""
     <style>
-      body {{ margin:0; padding:2px; background:transparent; font-family:sans-serif; }}
+      body {{
+        margin:0;
+        padding:2px;
+        background:transparent;
+        font-family:sans-serif;
+      }}
+
       .vbtn {{
         background: linear-gradient(135deg,#1a3a5c,#2563a8);
-        color:#fff; border:none; border-radius:8px;
-        padding:9px 20px; font-size:14px; cursor:pointer;
-        display:inline-flex; align-items:center; gap:7px;
-        transition:all .2s; width:100%;
+        color:#fff;
+        border:none;
+        border-radius:8px;
+        padding:9px 20px;
+        font-size:14px;
+        cursor:pointer;
+        width:100%;
       }}
-      .vbtn.rec {{ background:linear-gradient(135deg,#7b0000,#cc0000); animation:p .8s infinite; }}
-      @keyframes p {{ 0%,100%{{opacity:1}} 50%{{opacity:.55}} }}
-      #st_{uid} {{ margin-top:6px; padding:6px 10px; background:#071520;
-                   border:1px solid #2563a8; border-radius:6px;
-                   color:#7ec8e3; font-size:13px; min-height:28px; }}
+
+      .vbtn.rec {{
+        background:linear-gradient(135deg,#7b0000,#cc0000);
+      }}
+
+      #st_{uid} {{
+        margin-top:6px;
+        padding:6px 10px;
+        background:#071520;
+        border:1px solid #2563a8;
+        border-radius:6px;
+        color:#7ec8e3;
+        font-size:13px;
+      }}
     </style>
-    <button class="vbtn" id="b_{uid}" onclick="go()">🎤 {instrucao}</button>
-    <div id="st_{uid}">Aguardando fala...</div>
+
+    <button class="vbtn" id="b_{uid}" onclick="go()">
+        🎤 {instrucao}
+    </button>
+
+    <div id="st_{uid}">
+        Aguardando fala...
+    </div>
+
     <script>
-    var ativo = false, recObj = null;
+
+    var ativo = false;
+    var recObj = null;
+
     function go() {{
-      if (ativo) {{ recObj && recObj.stop(); return; }}
+
+      if (ativo) {{
+        recObj && recObj.stop();
+        return;
+      }}
+
       var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) {{ document.getElementById('st_{uid}').innerText='❌ Abra no Chrome ou Edge'; return; }}
+
+      if (!SR) {{
+        document.getElementById('st_{uid}').innerText =
+        '❌ Abra no Chrome ou Edge';
+        return;
+      }}
+
       recObj = new SR();
-      recObj.lang='pt-BR'; recObj.continuous=false; recObj.interimResults=false;
+
+      recObj.lang='pt-BR';
+      recObj.continuous=false;
+      recObj.interimResults=false;
+
       ativo = true;
+
       document.getElementById('b_{uid}').className='vbtn rec';
-      document.getElementById('b_{uid}').innerText='⏹️ Gravando — clique para parar';
-      document.getElementById('st_{uid}').innerText='🔴 Fale agora...';
 
       recObj.onresult = function(e) {{
+
         var txt = e.results[0][0].transcript;
-        document.getElementById('st_{uid}').innerText = '✅ ' + txt;
+
+        document.getElementById('st_{uid}').innerText =
+        '✅ ' + txt;
+
         injetarEClicar(txt);
       }};
+
       recObj.onerror = function(e) {{
-        document.getElementById('st_{uid}').innerText = '❌ ' + e.error;
+        document.getElementById('st_{uid}').innerText =
+        '❌ ' + e.error;
       }};
+
       recObj.onend = function() {{
         ativo = false;
         document.getElementById('b_{uid}').className='vbtn';
-        document.getElementById('b_{uid}').innerText='🎤 {instrucao}';
       }};
+
       recObj.start();
     }}
 
     function injetarEClicar(txt) {{
+
       var doc = window.parent.document;
 
-      // 1. Injeta no input pelo placeholder
       var inputs = doc.querySelectorAll('input');
+
       for (var i=0; i<inputs.length; i++) {{
+
         if ((inputs[i].placeholder||'').indexOf('{uid}') !== -1) {{
-          var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+
+          var setter =
+          Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype,
+          'value').set;
+
           setter.call(inputs[i], txt);
-          inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
-          inputs[i].dispatchEvent(new Event('change', {{bubbles:true}}));
+
+          inputs[i].dispatchEvent(
+            new Event('input', {{bubbles:true}})
+          );
+
+          inputs[i].dispatchEvent(
+            new Event('change', {{bubbles:true}})
+          );
+
           break;
         }}
       }}
 
-      // 2. Aguarda 800ms e clica no botão salvar
       setTimeout(function() {{
+
         var btns = doc.querySelectorAll('button');
+
         for (var i=0; i<btns.length; i++) {{
-          if (btns[i].innerText && btns[i].innerText.indexOf('{btn_label}') !== -1) {{
+
+          if (
+            btns[i].innerText &&
+            btns[i].innerText.indexOf('{btn_label}') !== -1
+          ) {{
+
             btns[i].click();
             break;
           }}
         }}
-      }}, 800);
+
+      }}, 700);
     }}
+
     </script>
     """
 
@@ -2633,125 +2711,243 @@ def campo_voz_autoclick(uid: str, instrucao: str, btn_label: str) -> str:
         placeholder=placeholder_unico,
         label_visibility="collapsed"
     )
+
     return texto.strip()
 
+
 # =========================================================
-# MOTOR DE TABELA
+# TABELA
 # =========================================================
-def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
-                   label_p="atividade", label_extra=None, icone="📋"):
+def tabela_com_voz(
+    titulo,
+    chave,
+    col_p,
+    col_e=None,
+    nome_e=None,
+    label_p="atividade",
+    label_extra=None,
+    icone="📋"
+):
 
     st.markdown(f"### {icone} {titulo}")
 
     with st.expander("ℹ️ Legenda", expanded=False):
-        st.markdown("DVD=Várias vezes/dia · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual")
+        st.markdown(
+            "DVD=Várias vezes/dia · D=Diário · "
+            "S=Semanal · Q=Quinzenal · "
+            "M=Mensal · T=Trimestral · A=Anual"
+        )
 
-    # Tabela puxa do session_state (JSON)
-    dados = st.session_state.get("rascunho", {}).get("tabelas", {}).get(chave, [])
-    cols  = [col_p] + ([col_e] if col_e else []) + ["Horas", "Minutos", "Frequência"]
-    df    = pd.DataFrame(dados).reindex(columns=cols, fill_value="")
-    while len(df) < 15:
-        df.loc[len(df)] = {c: "" for c in cols}
-    df = df[cols].head(15).fillna("").astype(str)
+    # =====================================================
+    # ESTRUTURA
+    # =====================================================
+    if "tabelas" not in st.session_state["rascunho"]:
+        st.session_state["rascunho"]["tabelas"] = {}
 
-    btn_label = f"LINHA_{chave}"  # label único por tabela para o JS encontrar
+    if chave not in st.session_state["rascunho"]["tabelas"]:
+        st.session_state["rascunho"]["tabelas"][chave] = []
 
+    cols = [col_p]
+
+    if col_e:
+        cols.append(col_e)
+
+    cols += ["Horas", "Minutos", "Frequência"]
+
+    dados = st.session_state["rascunho"]["tabelas"][chave]
+
+    while len(dados) < 15:
+        dados.append({c: "" for c in cols})
+
+    df = pd.DataFrame(dados)
+
+    for c in cols:
+        if c not in df.columns:
+            df[c] = ""
+
+    df = df[cols].fillna("").astype(str)
+
+    btn_label = f"LINHA_{chave}"
+
+    # =====================================================
+    # VOZ
+    # =====================================================
     with st.expander("🎤 Adicionar por voz", expanded=True):
-        st.caption("🟢 Clique 🎤 → fale → texto entra na tabela automaticamente")
 
-        # Campo principal com autoclick
+        st.caption("🟢 Clique 🎤 → fale → adiciona automaticamente")
+
         st.markdown(f"**🎤 {col_p}:**")
+
         fala_p = campo_voz_autoclick(
             uid=f"{chave}_p1",
             instrucao=f"Falar {label_p}",
             btn_label=btn_label
         )
 
-        # Campo extra se necessário
         fala_extra = ""
+
         if col_e and label_extra:
+
             st.markdown(f"**🎤 {label_extra}:**")
+
             fala_extra = campo_voz_autoclick(
                 uid=f"{chave}_extra",
                 instrucao=f"Falar {label_extra}",
                 btn_label=btn_label
             )
 
-        # Botão com label único que o JS encontra
-        if st.button(f"💾 {btn_label}", key=f"btn_{chave}",
-                     use_container_width=True, type="primary"):
+        if st.button(
+            f"💾 {btn_label}",
+            key=f"btn_{chave}",
+            use_container_width=True,
+            type="primary"
+        ):
+
             if not fala_p:
-                st.warning(f"⚠️ Fale a {col_p.lower()} antes de salvar.")
+
+                st.warning("⚠️ Campo vazio.")
+
             else:
-                # Insere direto no JSON do session_state
-                if "tabelas" not in st.session_state["rascunho"]:
-                    st.session_state["rascunho"]["tabelas"] = {}
-                if chave not in st.session_state["rascunho"]["tabelas"]:
-                    st.session_state["rascunho"]["tabelas"][chave] = []
 
                 linhas = st.session_state["rascunho"]["tabelas"][chave]
-                while len(linhas) < 15:
-                    linhas.append({c: "" for c in cols})
+
+                inseriu = False
 
                 for i, linha in enumerate(linhas):
+
                     if not str(linha.get(col_p, "")).strip():
+
                         linhas[i][col_p] = fala_p
+
                         if col_e:
                             linhas[i][col_e] = fala_extra
-                        st.session_state["rascunho"]["tabelas"][chave] = linhas
-                        # Limpa campos de voz
-                        st.session_state[f"voz_{chave}_p1"]   = ""
-                        st.session_state[f"voz_{chave}_extra"] = ""
-                        st.success(f"✅ Linha {i+1}: *{fala_p}*")
-                        st.rerun()
+
+                        inseriu = True
                         break
+
+                st.session_state["rascunho"]["tabelas"][chave] = linhas
+
+                if inseriu:
+
+                    st.session_state[f"voz_{chave}_p1"] = ""
+
+                    if col_e:
+                        st.session_state[f"voz_{chave}_extra"] = ""
+
+                    st.success(f"✅ Linha {i+1} adicionada!")
+
+                    st.rerun()
+
                 else:
                     st.warning("⚠️ Tabela cheia.")
 
-    # Tabela editável
-    st.markdown("##### ✏️ Ajuste Horas, Minutos e Frequência na tabela:")
+    # =====================================================
+    # EDITOR
+    # =====================================================
     cfg = {
-        col_p:        st.column_config.TextColumn("Descrição", width="large"),
-        "Frequência": st.column_config.SelectboxColumn("Frequência", options=lista_freq, width="small"),
-        "Horas":      st.column_config.SelectboxColumn("Horas",      options=lista_h,    width="small"),
-        "Minutos":    st.column_config.SelectboxColumn("Minutos",    options=lista_m,    width="small"),
-    }
-    if col_e:
-        cfg[col_e] = st.column_config.TextColumn(nome_e or col_e, width="medium")
+        col_p: st.column_config.TextColumn(
+            "Descrição",
+            width="large"
+        ),
 
-    editor = st.data_editor(df, key=f"ed_{chave}", column_config=cfg,
-                            use_container_width=True, num_rows="fixed")
+        "Frequência": st.column_config.SelectboxColumn(
+            "Frequência",
+            options=lista_freq,
+            width="small"
+        ),
+
+        "Horas": st.column_config.SelectboxColumn(
+            "Horas",
+            options=lista_h,
+            width="small"
+        ),
+
+        "Minutos": st.column_config.SelectboxColumn(
+            "Minutos",
+            options=lista_m,
+            width="small"
+        ),
+    }
+
+    if col_e:
+        cfg[col_e] = st.column_config.TextColumn(
+            nome_e or col_e,
+            width="medium"
+        )
+
+    editor = st.data_editor(
+        df,
+        key=f"ed_{chave}",
+        column_config=cfg,
+        use_container_width=True,
+        num_rows="fixed"
+    )
+
+    # =====================================================
+    # SINCRONIZA
+    # =====================================================
+    st.session_state["rascunho"]["tabelas"][chave] = (
+        editor.fillna("").astype(str).to_dict("records")
+    )
+
     st.markdown("---")
+
     return editor
 
 
 # =========================================================
-# IDENTIFICAÇÃO E CARREGAMENTO
+# IDENTIFICAÇÃO
 # =========================================================
 st.title("📋 NetExame · Rascunho")
-st.caption("🟢 Clique 🎤 → fale → entra na tabela automaticamente | Chrome/Edge")
+
+st.caption(
+    "🟢 Clique 🎤 → fale → entra automaticamente"
+)
 
 st.subheader("👤 Identificação")
-nome_input = st.text_input("NOME COMPLETO:").strip().upper()
+
+nome_input = st.text_input(
+    "NOME COMPLETO:"
+).strip().upper()
 
 if not nome_input:
-    st.info("Digite seu nome para começar.")
+    st.info("Digite seu nome.")
     st.stop()
 
 nome_arq = f"rascunhos/{nome_input.replace(' ', '_')}.json"
-if st.session_state.get("usuario_atual") != nome_input:
-    st.session_state["usuario_atual"] = nome_input
-    st.session_state["logado"]        = False
 
-confirmar = st.checkbox("✅ CLIQUE PARA CARREGAR MEUS DADOS")
-if confirmar and not st.session_state.get("logado"):
+if st.session_state.get("usuario_atual") != nome_input:
+
+    st.session_state["usuario_atual"] = nome_input
+    st.session_state["logado"] = False
+
+confirmar = st.checkbox(
+    "✅ CLIQUE PARA CARREGAR MEUS DADOS"
+)
+
+if confirmar and not st.session_state["logado"]:
+
     try:
+
         conteudo = repo.get_contents(nome_arq)
-        st.session_state["rascunho"] = json.loads(conteudo.decoded_content.decode())
-        st.success(f"✅ Rascunho de {nome_input} carregado!")
+
+        st.session_state["rascunho"] = json.loads(
+            conteudo.decoded_content.decode()
+        )
+
+        st.success(f"✅ Rascunho carregado!")
+
     except:
-        st.session_state["rascunho"] = {"colaborador": nome_input, "campos": {}, "tabelas": {}, "disc": {}}
-        st.info("Nenhum rascunho encontrado. Iniciando novo.")
+
+        st.session_state["rascunho"] = {
+            "colaborador": nome_input,
+            "campos": {},
+            "tabelas": {},
+            "disc": {}
+        }
+
+        st.info("Novo rascunho criado.")
+
     st.session_state["logado"] = True
     st.rerun()
 
@@ -2759,58 +2955,155 @@ if not st.session_state["logado"]:
     st.stop()
 
 # =========================================================
-# CAMPOS DE IDENTIFICAÇÃO
+# CAMPOS
 # =========================================================
 st.markdown("---")
+
 col1, col2 = st.columns(2)
+
 with col1:
-    cargo        = st.text_input("Cargo:",           value=val("cargo"))
-    depto        = st.text_input("Departamento:",    value=val("dep"))
-    setor        = st.text_input("Setor:",           value=val("setor"))
+
+    cargo = st.text_input(
+        "Cargo:",
+        value=val("cargo")
+    )
+
+    depto = st.text_input(
+        "Departamento:",
+        value=val("dep")
+    )
+
+    setor = st.text_input(
+        "Setor:",
+        value=val("setor")
+    )
+
 with col2:
-    chefe        = st.text_input("Chefe imediato:",  value=val("chefe"))
-    unidade      = st.text_input("Empresa/Unidade:", value=val("unidade"))
-    escolaridade = st.text_input("Escolaridade:",    value=val("escolaridade"))
-    devolver_em  = st.text_input("Devolver em:",     value=val("devolver_em"))
 
-cursos   = st.text_area("Cursos Obrigatórios e Diferenciais:", value=val("cursos"))
-objetivo = st.text_area("Em que consiste seu trabalho e qual seu Principal Objetivo:", value=val("objetivo"))
-sistemas = st.text_area("Sistemas Utilizados na Empresa:", value=val("sistemas"))
+    chefe = st.text_input(
+        "Chefe imediato:",
+        value=val("chefe")
+    )
+
+    unidade = st.text_input(
+        "Empresa/Unidade:",
+        value=val("unidade")
+    )
+
+    escolaridade = st.text_input(
+        "Escolaridade:",
+        value=val("escolaridade")
+    )
+
+    devolver_em = st.text_input(
+        "Devolver em:",
+        value=val("devolver_em")
+    )
+
+cursos = st.text_area(
+    "Cursos Obrigatórios e Diferenciais:",
+    value=val("cursos")
+)
+
+objetivo = st.text_area(
+    "Objetivo do Trabalho:",
+    value=val("objetivo")
+)
+
+sistemas = st.text_area(
+    "Sistemas Utilizados:",
+    value=val("sistemas")
+)
 
 # =========================================================
-# 5 TABELAS
+# TABELAS
 # =========================================================
 st.markdown("---")
-st.subheader("📋 Tabelas de Atividades")
 
-e_alta   = tabela_com_voz("Atividades de Alta Complexidade",   "alta",
-                           "Atividade", label_p="atividade de alta complexidade", icone="🚀")
-e_normal = tabela_com_voz("Atividades de Complexidade Normal", "normal",
-                           "Atividade", label_p="atividade de complexidade normal", icone="📋")
-e_baixa  = tabela_com_voz("Atividades de Baixa Complexidade",  "baixa",
-                           "Atividade", label_p="atividade de baixa complexidade", icone="⏳")
-e_dif    = tabela_com_voz("Dificuldades e Bloqueios",          "dificuldades",
-                           "Dificuldade", col_e="Setor Envolvido", nome_e="Setor Envolvido",
-                           label_p="dificuldade", label_extra="Setor Envolvido", icone="⚠️")
-e_sug    = tabela_com_voz("Sugestões de Melhoria",             "sugestoes",
-                           "Sugestão", col_e="Impacto Esperado", nome_e="Impacto Esperado",
-                           label_p="sugestão", label_extra="Impacto Esperado", icone="💡")
+st.subheader("📋 Tabelas")
+
+tabela_com_voz(
+    "Atividades Alta Complexidade",
+    "alta",
+    "Atividade",
+    label_p="atividade alta",
+    icone="🚀"
+)
+
+tabela_com_voz(
+    "Atividades Complexidade Normal",
+    "normal",
+    "Atividade",
+    label_p="atividade normal",
+    icone="📋"
+)
+
+tabela_com_voz(
+    "Atividades Baixa Complexidade",
+    "baixa",
+    "Atividade",
+    label_p="atividade baixa",
+    icone="⏳"
+)
+
+tabela_com_voz(
+    "Dificuldades",
+    "dificuldades",
+    "Dificuldade",
+    col_e="Setor Envolvido",
+    nome_e="Setor Envolvido",
+    label_p="dificuldade",
+    label_extra="setor envolvido",
+    icone="⚠️"
+)
+
+tabela_com_voz(
+    "Sugestões",
+    "sugestoes",
+    "Sugestão",
+    col_e="Impacto Esperado",
+    nome_e="Impacto Esperado",
+    label_p="sugestão",
+    label_extra="impacto esperado",
+    icone="💡"
+)
 
 # =========================================================
-# QUESTIONÁRIO
+# DISC
 # =========================================================
 st.markdown("---")
+
 st.subheader("📊 Questionário")
 
-disc_salvo     = st.session_state.get("rascunho", {}).get("disc", {})
-nome_colab     = st.session_state.get("usuario_atual", "novo")
-opcoes         = ["A", "B", "C", "D"]
+disc_salvo = st.session_state.get(
+    "rascunho",
+    {}
+).get(
+    "disc",
+    {}
+)
+
+nome_colab = st.session_state.get(
+    "usuario_atual",
+    "novo"
+)
+
+opcoes = ["A", "B", "C", "D"]
+
 respostas_disc = {}
 
 for i, pergunta in enumerate(perguntas_disc):
-    chave_disc  = str(i)
+
+    chave_disc = str(i)
+
     letra_salva = disc_salvo.get(chave_disc)
-    idx         = opcoes.index(letra_salva) if letra_salva in opcoes else None
+
+    idx = (
+        opcoes.index(letra_salva)
+        if letra_salva in opcoes
+        else None
+    )
+
     respostas_disc[chave_disc] = st.radio(
         f"**{i+1}. {pergunta}**",
         options=opcoes,
@@ -2820,55 +3113,109 @@ for i, pergunta in enumerate(perguntas_disc):
     )
 
 # =========================================================
-# SALVAMENTO
+# SALVAR
 # =========================================================
 st.markdown("---")
-if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_width=True):
-    if not nome_input or len(nome_input) < 3:
-        st.error("⚠️ Nome inválido.")
-        st.stop()
+
+if st.button(
+    "💾 SALVAR RASCUNHO COMPLETO",
+    type="primary",
+    use_container_width=True
+):
 
     payload = {
+
         "colaborador": nome_input,
-        "timestamp":   datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+
+        "timestamp": datetime.now().strftime(
+            "%d/%m/%Y %H:%M:%S"
+        ),
+
         "campos": {
-            "cargo": cargo, "dep": depto, "setor": setor,
-            "chefe": chefe, "unidade": unidade,
-            "escolaridade": escolaridade, "devolver_em": devolver_em,
-            "cursos": cursos, "objetivo": objetivo, "sistemas": sistemas
+
+            "cargo": cargo,
+            "dep": depto,
+            "setor": setor,
+
+            "chefe": chefe,
+            "unidade": unidade,
+
+            "escolaridade": escolaridade,
+            "devolver_em": devolver_em,
+
+            "cursos": cursos,
+            "objetivo": objetivo,
+            "sistemas": sistemas
         },
-        "tabelas": {
-            "alta":         e_alta.to_dict("records"),
-            "normal":       e_normal.to_dict("records"),
-            "baixa":        e_baixa.to_dict("records"),
-            "dificuldades": e_dif.to_dict("records"),
-            "sugestoes":    e_sug.to_dict("records")
-        },
+
+        "tabelas": st.session_state["rascunho"]["tabelas"],
+
         "disc": respostas_disc
     }
 
-    nome_limpo     = nome_input.replace(" ", "_").upper()
+    nome_limpo = nome_input.replace(
+        " ",
+        "_"
+    ).upper()
+
     caminho_github = f"rascunhos/{nome_limpo}.json"
-    conteudo_json  = json.dumps(payload, ensure_ascii=False, indent=4)
+
+    conteudo_json = json.dumps(
+        payload,
+        ensure_ascii=False,
+        indent=4
+    )
 
     try:
-        try:
-            f = repo.get_contents(caminho_github)
-            repo.update_file(f.path, f"Update: {nome_input}", conteudo_json, f.sha)
-        except:
-            repo.create_file(caminho_github, f"Novo: {nome_input}", conteudo_json)
-        st.session_state["rascunho"] = payload
-        st.success(f"✅ Rascunho de {nome_input} salvo!")
-        st.download_button("📥 Baixar cópia JSON", conteudo_json.encode("utf-8"),
-                           f"{nome_limpo}_rascunho.json", "application/json",
-                           use_container_width=True)
-    except Exception as e:
-        st.error(f"❌ Erro: {e}")
-        st.download_button("📥 Backup Emergência", conteudo_json.encode("utf-8"),
-                           f"{nome_limpo}_EMERGENCIA.json", "application/json",
-                           use_container_width=True)
 
-st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+        try:
+
+            f = repo.get_contents(caminho_github)
+
+            repo.update_file(
+                f.path,
+                f"Update: {nome_input}",
+                conteudo_json,
+                f.sha
+            )
+
+        except:
+
+            repo.create_file(
+                caminho_github,
+                f"Novo: {nome_input}",
+                conteudo_json
+            )
+
+        st.session_state["rascunho"] = payload
+
+        st.success(
+            f"✅ Rascunho salvo!"
+        )
+
+        st.download_button(
+            "📥 Baixar JSON",
+            conteudo_json.encode("utf-8"),
+            f"{nome_limpo}_rascunho.json",
+            "application/json",
+            use_container_width=True
+        )
+
+    except Exception as e:
+
+        st.error(f"❌ Erro: {e}")
+
+        st.download_button(
+            "📥 Backup Emergência",
+            conteudo_json.encode("utf-8"),
+            f"{nome_limpo}_EMERGENCIA.json",
+            "application/json",
+            use_container_width=True
+        )
+
+st.caption(
+    "NetExame · Rascunho"
+)
 
 
 
