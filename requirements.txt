@@ -10,4 +10,5 @@ requests
 python-dotenv
 python-docx
 fpdf
-streamlit-mic-recorder  
+streamlit-mic-recorder
+streamlit>=1.30.0  

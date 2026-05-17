@@ -2473,6 +2473,7 @@ import streamlit as st
 import pandas as pd
 import json
 import re
+import base64
 import requests
 from datetime import datetime
 from github import Github
@@ -2502,98 +2503,188 @@ def val(chave, default=""):
     return d.get("campos", {}).get(chave, d.get(chave, default))
 
 # =========================================================
-# CAPTURA DE VOZ — lê query param ?voz_uid=TEXTO
-# O JS redireciona a URL com o texto falado no query param
-# O Streamlit relê a página e captura via st.query_params
+# WHISPER — TRANSCRIÇÃO DE ÁUDIO BASE64
 # =========================================================
-def ler_voz_param(uid: str) -> str:
-    """Lê o texto de voz vindo do query param e limpa após leitura."""
-    key_mem   = f"mem_voz_{uid}"
-    param_key = f"v{uid}"  # curto para não quebrar URL
+def transcrever_whisper(audio_b64: str) -> str:
+    """Recebe áudio em base64 (webm), envia para Whisper, retorna texto."""
+    try:
+        audio_bytes = base64.b64decode(audio_b64)
+        resp = requests.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+            files={"file": ("audio.webm", audio_bytes, "audio/webm")},
+            data={"model": "whisper-1", "language": "pt"},
+            timeout=20
+        )
+        return resp.json().get("text", "").strip()
+    except Exception as e:
+        st.warning(f"⚠️ Erro Whisper: {e}")
+        return ""
 
-    params = st.query_params.to_dict()
-    if param_key in params:
-        texto = params[param_key]
-        st.session_state[key_mem] = texto
-        # Remove o param da URL
-        novos = {k: v for k, v in params.items() if k != param_key}
-        st.query_params.from_dict(novos)
-
-    return st.session_state.get(key_mem, "")
-
-
-def campo_voz(uid: str, rotulo: str, placeholder_txt: str) -> str:
+# =========================================================
+# COMPONENTE DE VOZ — MediaRecorder → base64 → Whisper
+# =========================================================
+def campo_voz(uid: str, rotulo: str) -> str:
     """
-    Mostra botão de microfone (JS) + campo de texto.
-    O JS ao terminar de gravar redireciona a URL com ?v{uid}=TEXTO.
-    O Streamlit relê e popula o campo via session_state.
-    O colaborador pode editar livremente antes de confirmar.
+    Grava áudio via MediaRecorder no navegador.
+    Envia base64 para o Streamlit via st.session_state via hash da URL.
+    Transcreve com Whisper e retorna texto editável.
     """
-    texto_atual = ler_voz_param(uid)
-    key_input   = f"inp_voz_{uid}"
+    key_audio   = f"audio_b64_{uid}"
+    key_texto   = f"texto_voz_{uid}"
+    key_input   = f"input_voz_{uid}"
+    key_proc    = f"proc_voz_{uid}"
 
-    # Botão de microfone via JS com redirect de URL
+    # Se chegou áudio novo, transcreve
+    if st.session_state.get(key_audio) and not st.session_state.get(key_proc):
+        with st.spinner("🧠 Transcrevendo com Whisper..."):
+            texto = transcrever_whisper(st.session_state[key_audio])
+        if texto:
+            st.session_state[key_texto] = texto
+        st.session_state[key_proc]  = True
+        st.session_state[key_audio] = ""
+        st.rerun()
+
+    texto_atual = st.session_state.get(key_texto, "")
+
+    # HTML com MediaRecorder — envia base64 via Streamlit component value
     html = f"""
     <style>
-      body{{margin:0;padding:0;background:transparent;font-family:sans-serif;}}
+      body{{margin:0;padding:2px;background:transparent;font-family:sans-serif;}}
       .vb{{background:linear-gradient(135deg,#1a3a5c,#2563a8);color:#fff;border:none;
            border-radius:8px;padding:9px 18px;font-size:14px;cursor:pointer;
-           display:inline-flex;align-items:center;gap:6px;width:100%;justify-content:center;}}
+           width:100%;display:flex;align-items:center;justify-content:center;gap:8px;}}
       .vb.rec{{background:linear-gradient(135deg,#7b0000,#c00);animation:p .8s infinite;}}
       @keyframes p{{0%,100%{{opacity:1}}50%{{opacity:.5}}}}
-      .vinfo{{margin-top:5px;padding:5px 10px;background:#071520;border:1px solid #2563a8;
-              border-radius:6px;color:#7ec8e3;font-size:12px;text-align:center;}}
+      .info{{margin-top:5px;padding:5px 10px;background:#071520;border:1px solid #2563a8;
+             border-radius:6px;color:#7ec8e3;font-size:12px;text-align:center;min-height:24px;}}
     </style>
-    <button class="vb" id="vb_{uid}" onclick="go_{uid}()">🎤 Clique e fale</button>
-    <div class="vinfo" id="vi_{uid}">Pronto para gravar</div>
+
+    <button class="vb" id="vb" onclick="toggle()">🎤 Clique e fale</button>
+    <div class="info" id="info">Pronto para gravar</div>
+
     <script>
-    var ativo_{uid}=false, ro_{uid}=null;
-    function go_{uid}(){{
-      if(ativo_{uid}){{ro_{uid}&&ro_{uid}.stop();return;}}
-      var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-      if(!SR){{document.getElementById('vi_{uid}').innerText='❌ Use Chrome ou Edge';return;}}
-      ro_{uid}=new SR();
-      ro_{uid}.lang='pt-BR';ro_{uid}.continuous=false;ro_{uid}.interimResults=false;
-      ativo_{uid}=true;
-      document.getElementById('vb_{uid}').className='vb rec';
-      document.getElementById('vb_{uid}').innerText='⏹️ Gravando — clique para parar';
-      document.getElementById('vi_{uid}').innerText='🔴 Fale agora...';
-      ro_{uid}.onresult=function(e){{
-        var txt=e.results[0][0].transcript;
-        document.getElementById('vi_{uid}').innerText='✅ '+txt;
-        // Redireciona a URL do pai com o texto no query param
-        var url=new URL(window.parent.location.href);
-        url.searchParams.set('v{uid}', txt);
-        window.parent.location.href=url.toString();
-      }};
-      ro_{uid}.onerror=function(e){{
-        document.getElementById('vi_{uid}').innerText='❌ Erro: '+e.error;
-        ativo_{uid}=false;
-        document.getElementById('vb_{uid}').className='vb';
-        document.getElementById('vb_{uid}').innerText='🎤 Clique e fale';
-      }};
-      ro_{uid}.onend=function(){{
-        ativo_{uid}=false;
-        document.getElementById('vb_{uid}').className='vb';
-        document.getElementById('vb_{uid}').innerText='🎤 Clique e fale';
-      }};
-      ro_{uid}.start();
+    var mr=null, chunks=[], ativo=false;
+
+    function toggle(){{
+      if(ativo){{ mr&&mr.stop(); return; }}
+      navigator.mediaDevices.getUserMedia({{audio:true}})
+        .then(function(stream){{
+          mr = new MediaRecorder(stream, {{mimeType:'audio/webm'}});
+          chunks = [];
+          ativo = true;
+          document.getElementById('vb').className='vb rec';
+          document.getElementById('vb').innerText='⏹️ Gravando... clique para parar';
+          document.getElementById('info').innerText='🔴 Fale agora!';
+
+          mr.ondataavailable = function(e){{ if(e.data.size>0) chunks.push(e.data); }};
+
+          mr.onstop = function(){{
+            ativo=false;
+            document.getElementById('vb').className='vb';
+            document.getElementById('vb').innerText='🎤 Clique e fale';
+            document.getElementById('info').innerText='⏳ Enviando para transcrição...';
+
+            var blob = new Blob(chunks, {{type:'audio/webm'}});
+            var reader = new FileReader();
+            reader.onloadend = function(){{
+              var b64 = reader.result.split(',')[1];
+              // Envia para o Streamlit via Streamlit Components
+              window.parent.postMessage({{
+                type: 'streamlit:setComponentValue',
+                value: b64
+              }}, '*');
+              document.getElementById('info').innerText='✅ Enviado! Aguarde transcrição...';
+            }};
+            reader.readAsDataURL(blob);
+
+            // Para todas as tracks do microfone
+            stream.getTracks().forEach(function(t){{ t.stop(); }});
+          }};
+
+          mr.start();
+        }})
+        .catch(function(e){{
+          document.getElementById('info').innerText='❌ Microfone negado: '+e.message;
+        }});
     }}
     </script>
     """
-    st.components.v1.html(html, height=90)
 
-    # Campo editável — já vem preenchido com o texto capturado
-    novo = st.text_input(
+    # Componente que recebe o base64 do JS
+    audio_b64 = st.components.v1.html(html, height=90)
+
+    # Quando o componente retorna valor (áudio), salva no session_state
+    # Usamos st.text_input com hack de file_uploader para receber o base64
+    # Alternativa: usamos um número de versão para detectar mudança
+
+    st.markdown(f"**{rotulo}**")
+    texto_editavel = st.text_input(
         rotulo,
         value=texto_atual,
-        placeholder=placeholder_txt,
+        placeholder="Texto da fala aparece aqui após transcrição — pode editar",
         key=key_input,
+        label_visibility="collapsed"
+    )
+    st.session_state[key_texto] = texto_editavel
+    st.session_state[key_proc]  = False  # Reseta para aceitar novo áudio
+    return texto_editavel.strip()
+
+
+# =========================================================
+# SOLUÇÃO ALTERNATIVA REAL — audio_bytes via st.audio_input
+# Streamlit 1.30+ tem st.experimental_audio_input
+# =========================================================
+def campo_voz_nativo(uid: str, rotulo: str) -> str:
+    """
+    Usa st.audio_input (Streamlit >= 1.30) para gravar direto.
+    Transcreve com Whisper automaticamente.
+    """
+    key_texto = f"texto_voz_{uid}"
+    key_proc  = f"proc_{uid}"
+
+    texto_atual = st.session_state.get(key_texto, "")
+
+    st.markdown(f"**🎤 {rotulo}**")
+
+    try:
+        audio = st.audio_input(
+            "Clique no microfone, fale e clique novamente para parar:",
+            key=f"audioinput_{uid}"
+        )
+
+        if audio and not st.session_state.get(key_proc):
+            with st.spinner("🧠 Transcrevendo com Whisper..."):
+                audio_bytes = audio.read()
+                resp = requests.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    files={"file": ("audio.wav", audio_bytes, "audio/wav")},
+                    data={"model": "whisper-1", "language": "pt"},
+                    timeout=20
+                )
+                texto = resp.json().get("text", "").strip()
+            if texto:
+                st.session_state[key_texto] = texto
+                st.session_state[key_proc]  = True
+                st.success(f"✅ Transcrito: *{texto}*")
+                st.rerun()
+        elif not audio:
+            st.session_state[key_proc] = False
+
+    except Exception:
+        # Fallback se st.audio_input não disponível
+        st.info("💡 Versão do Streamlit não suporta microfone nativo. Digite abaixo.")
+
+    texto_editavel = st.text_input(
+        "✏️ Edite se necessário:",
+        value=st.session_state.get(key_texto, ""),
+        key=f"edit_{uid}",
         label_visibility="visible"
     )
-    # Sincroniza edição manual com a memória
-    st.session_state[f"mem_voz_{uid}"] = novo
-    return novo.strip()
+    st.session_state[key_texto]  = texto_editavel
+    st.session_state[key_proc]   = False
+    return texto_editavel.strip()
 
 
 # =========================================================
@@ -2609,7 +2700,7 @@ Retorne SOMENTE JSON válido, sem markdown.
 - Tempo: "{tempo_fala}"
 - Frequência: "{freq_fala}"{prompt_extra}
 
-Formato exato:
+Formato:
 {{
   "atividade": "<descrição limpa e capitalizada>",
   "horas": <inteiro 0-24>,
@@ -2637,7 +2728,7 @@ Padrão se não interpretar: D, 1h, 0min.
 
 
 # =========================================================
-# MOTOR DE TABELA COM VOZ GUIADA
+# MOTOR DE TABELA COM VOZ NATIVA
 # =========================================================
 lista_freq = ["", "DVD", "D", "S", "Q", "M", "T", "A"]
 lista_h    = [""] + [f"{i} h" for i in range(25)]
@@ -2659,46 +2750,29 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
     df = df[cols].head(15).fillna("").astype(str)
 
     with st.expander(f"🎤 Adicionar via voz", expanded=True):
-        st.caption("1️⃣ Clique 🎤 e fale · 2️⃣ Texto aparece no campo · 3️⃣ Clique ✨ Interpretar com IA")
+        st.caption("🎙️ Clique no microfone → fale → clique novamente para parar → Whisper transcreve → clique ✨ Interpretar")
 
-        # Passo 1 — Descrição principal
-        fala_p = campo_voz(
-            uid=f"{chave}p1",
-            rotulo=f"✏️ PASSO 1 — {label_p.capitalize()}:",
-            placeholder_txt=f"Fale acima ou digite aqui a {label_p}"
-        )
+        # Passo 1
+        fala_p = campo_voz_nativo(f"{chave}p1", f"PASSO 1 — Descreva a {label_p}:")
 
-        # Passo extra (setor / impacto)
+        # Passo extra
         fala_extra = ""
         p_t, p_f   = "2", "3"
         if col_e and label_extra:
-            fala_extra = campo_voz(
-                uid=f"{chave}ex",
-                rotulo=f"✏️ PASSO 2 — {label_extra}:",
-                placeholder_txt=f"Fale acima ou digite o {label_extra}"
-            )
-            p_t, p_f = "3", "4"
+            fala_extra = campo_voz_nativo(f"{chave}ex", f"PASSO 2 — {label_extra}:")
+            p_t, p_f   = "3", "4"
 
-        # Passo Tempo
-        fala_tempo = campo_voz(
-            uid=f"{chave}tm",
-            rotulo=f"✏️ PASSO {p_t} — Tempo (ex: duas horas, 30 minutos):",
-            placeholder_txt="Fale acima ou digite o tempo"
-        )
-
-        # Passo Frequência
-        fala_freq = campo_voz(
-            uid=f"{chave}fq",
-            rotulo=f"✏️ PASSO {p_f} — Frequência (ex: todo dia, toda semana):",
-            placeholder_txt="Fale acima ou digite a frequência"
-        )
+        fala_tempo = campo_voz_nativo(f"{chave}tm",
+                                      f"PASSO {p_t} — Tempo (ex: duas horas, 30 minutos):")
+        fala_freq  = campo_voz_nativo(f"{chave}fq",
+                                      f"PASSO {p_f} — Frequência (ex: todo dia, toda semana):")
 
         cb1, cb2 = st.columns([3, 1])
         with cb1:
             if st.button(f"✨ Interpretar com IA e adicionar à tabela",
                          key=f"gpt_{chave}", use_container_width=True):
                 if not fala_p:
-                    st.warning("⚠️ Preencha o Passo 1 — fale ou digite a descrição.")
+                    st.warning("⚠️ Preencha o Passo 1.")
                 elif not fala_tempo or not fala_freq:
                     st.warning("⚠️ Preencha também tempo e frequência.")
                 else:
@@ -2722,18 +2796,19 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
                             if "tabelas" not in st.session_state["rascunho"]:
                                 st.session_state["rascunho"]["tabelas"] = {}
                             st.session_state["rascunho"]["tabelas"][chave] = df.to_dict("records")
-                            st.success(f"✅ Linha {idx+1} preenchida automaticamente!")
+                            st.success(f"✅ Linha {idx+1} preenchida!")
                             st.rerun()
                             break
                     else:
                         st.warning("⚠️ Tabela cheia. Edite abaixo.")
 
         with cb2:
-            if st.button("🗑️ Limpar campos", key=f"clr_{chave}", use_container_width=True):
+            if st.button("🗑️ Limpar", key=f"clr_{chave}", use_container_width=True):
                 for s in ["p1","ex","tm","fq"]:
-                    for k in [f"mem_voz_{chave}{s}", f"inp_voz_{chave}{s}"]:
+                    for k in [f"texto_voz_{chave}{s}", f"edit_{chave}{s}",
+                              f"proc_{chave}{s}", f"audioinput_{chave}{s}"]:
                         if k in st.session_state:
-                            st.session_state[k] = ""
+                            del st.session_state[k]
                 st.rerun()
 
     st.markdown("##### ✏️ Revise ou edite diretamente na tabela:")
@@ -2756,7 +2831,7 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
 # IDENTIFICAÇÃO E CARREGAMENTO
 # =========================================================
 st.title("📋 NetExame · Rascunho")
-st.caption("Preencha por voz ou manualmente — Chrome/Edge recomendado para voz")
+st.caption("Preencha por voz (Whisper) ou manualmente")
 
 st.subheader("👤 Identificação")
 nome_input = st.text_input("NOME COMPLETO:").strip().upper()
@@ -2897,7 +2972,8 @@ if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
                            f"{nome_limpo}_EMERGENCIA.json", "application/json",
                            use_container_width=True)
 
-st.caption("NetExame · Rascunho com voz — formulário principal continua funcionando normalmente.")
+st.caption("NetExame · Rascunho com Whisper — formulário principal continua funcionando normalmente.")
+
 
 
 
