@@ -2502,105 +2502,98 @@ def val(chave, default=""):
     return d.get("campos", {}).get(chave, d.get(chave, default))
 
 # =========================================================
-# CAMPO DE VOZ — Web Speech API injetando no DOM pai
+# CAPTURA DE VOZ — lê query param ?voz_uid=TEXTO
+# O JS redireciona a URL com o texto falado no query param
+# O Streamlit relê a página e captura via st.query_params
 # =========================================================
-def campo_voz_js(uid: str, instrucao: str, label_input: str) -> str:
-    """
-    Renderiza botão de microfone em iframe.
-    Ao detectar fala, injeta o texto diretamente no input do Streamlit
-    encontrado pelo placeholder/label no DOM pai.
-    Retorna o valor atual do text_input correspondente.
-    """
-    key_st = f"voz_{uid}"
+def ler_voz_param(uid: str) -> str:
+    """Lê o texto de voz vindo do query param e limpa após leitura."""
+    key_mem   = f"mem_voz_{uid}"
+    param_key = f"v{uid}"  # curto para não quebrar URL
 
-    # O placeholder único é o que o JS usa para achar o input correto no DOM
-    placeholder_unico = f"__voz__{uid}__"
+    params = st.query_params.to_dict()
+    if param_key in params:
+        texto = params[param_key]
+        st.session_state[key_mem] = texto
+        # Remove o param da URL
+        novos = {k: v for k, v in params.items() if k != param_key}
+        st.query_params.from_dict(novos)
 
+    return st.session_state.get(key_mem, "")
+
+
+def campo_voz(uid: str, rotulo: str, placeholder_txt: str) -> str:
+    """
+    Mostra botão de microfone (JS) + campo de texto.
+    O JS ao terminar de gravar redireciona a URL com ?v{uid}=TEXTO.
+    O Streamlit relê e popula o campo via session_state.
+    O colaborador pode editar livremente antes de confirmar.
+    """
+    texto_atual = ler_voz_param(uid)
+    key_input   = f"inp_voz_{uid}"
+
+    # Botão de microfone via JS com redirect de URL
     html = f"""
     <style>
-      body {{ margin:0; padding:2px; background:transparent; font-family:sans-serif; }}
-      .vbtn {{
-        background: linear-gradient(135deg,#1a3a5c,#2563a8);
-        color:#fff; border:none; border-radius:8px;
-        padding:9px 20px; font-size:14px; cursor:pointer;
-        display:inline-flex; align-items:center; gap:7px;
-        transition:all .2s; width:100%;
-      }}
-      .vbtn.rec {{ background:linear-gradient(135deg,#7b0000,#cc0000); animation:p .8s infinite; }}
-      @keyframes p {{ 0%,100%{{opacity:1}} 50%{{opacity:.55}} }}
-      #st_{uid} {{ margin-top:6px; padding:6px 10px; background:#071520;
-                   border:1px solid #2563a8; border-radius:6px;
-                   color:#7ec8e3; font-size:13px; min-height:28px; }}
+      body{{margin:0;padding:0;background:transparent;font-family:sans-serif;}}
+      .vb{{background:linear-gradient(135deg,#1a3a5c,#2563a8);color:#fff;border:none;
+           border-radius:8px;padding:9px 18px;font-size:14px;cursor:pointer;
+           display:inline-flex;align-items:center;gap:6px;width:100%;justify-content:center;}}
+      .vb.rec{{background:linear-gradient(135deg,#7b0000,#c00);animation:p .8s infinite;}}
+      @keyframes p{{0%,100%{{opacity:1}}50%{{opacity:.5}}}}
+      .vinfo{{margin-top:5px;padding:5px 10px;background:#071520;border:1px solid #2563a8;
+              border-radius:6px;color:#7ec8e3;font-size:12px;text-align:center;}}
     </style>
-    <button class="vbtn" id="b_{uid}" onclick="go()">🎤 {instrucao}</button>
-    <div id="st_{uid}">Aguardando fala...</div>
+    <button class="vb" id="vb_{uid}" onclick="go_{uid}()">🎤 Clique e fale</button>
+    <div class="vinfo" id="vi_{uid}">Pronto para gravar</div>
     <script>
-    var ativo = false, recObj = null;
-    function go() {{
-      if (ativo) {{ recObj && recObj.stop(); return; }}
-      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) {{ document.getElementById('st_{uid}').innerText='❌ Abra no Chrome ou Edge'; return; }}
-      recObj = new SR();
-      recObj.lang='pt-BR'; recObj.continuous=false; recObj.interimResults=false;
-      ativo = true;
-      document.getElementById('b_{uid}').className='vbtn rec';
-      document.getElementById('b_{uid}').innerText='⏹️ Gravando — clique para parar';
-      document.getElementById('st_{uid}').innerText='🔴 Fale agora...';
-
-      recObj.onresult = function(e) {{
-        var txt = e.results[0][0].transcript;
-        document.getElementById('st_{uid}').innerText = '✅ ' + txt;
-        injetar(txt);
+    var ativo_{uid}=false, ro_{uid}=null;
+    function go_{uid}(){{
+      if(ativo_{uid}){{ro_{uid}&&ro_{uid}.stop();return;}}
+      var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+      if(!SR){{document.getElementById('vi_{uid}').innerText='❌ Use Chrome ou Edge';return;}}
+      ro_{uid}=new SR();
+      ro_{uid}.lang='pt-BR';ro_{uid}.continuous=false;ro_{uid}.interimResults=false;
+      ativo_{uid}=true;
+      document.getElementById('vb_{uid}').className='vb rec';
+      document.getElementById('vb_{uid}').innerText='⏹️ Gravando — clique para parar';
+      document.getElementById('vi_{uid}').innerText='🔴 Fale agora...';
+      ro_{uid}.onresult=function(e){{
+        var txt=e.results[0][0].transcript;
+        document.getElementById('vi_{uid}').innerText='✅ '+txt;
+        // Redireciona a URL do pai com o texto no query param
+        var url=new URL(window.parent.location.href);
+        url.searchParams.set('v{uid}', txt);
+        window.parent.location.href=url.toString();
       }};
-      recObj.onerror = function(e) {{
-        document.getElementById('st_{uid}').innerText = '❌ ' + e.error;
+      ro_{uid}.onerror=function(e){{
+        document.getElementById('vi_{uid}').innerText='❌ Erro: '+e.error;
+        ativo_{uid}=false;
+        document.getElementById('vb_{uid}').className='vb';
+        document.getElementById('vb_{uid}').innerText='🎤 Clique e fale';
       }};
-      recObj.onend = function() {{
-        ativo = false;
-        document.getElementById('b_{uid}').className='vbtn';
-        document.getElementById('b_{uid}').innerText='🎤 {instrucao}';
+      ro_{uid}.onend=function(){{
+        ativo_{uid}=false;
+        document.getElementById('vb_{uid}').className='vb';
+        document.getElementById('vb_{uid}').innerText='🎤 Clique e fale';
       }};
-      recObj.start();
-    }}
-
-    function injetar(txt) {{
-      // Procura o input pelo placeholder único no documento pai
-      var doc = window.parent.document;
-      var inputs = doc.querySelectorAll('input[type="text"], input:not([type])');
-      for (var i=0; i<inputs.length; i++) {{
-        if (inputs[i].placeholder && inputs[i].placeholder.indexOf('{uid}') !== -1) {{
-          var setter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype,'value').set;
-          setter.call(inputs[i], txt);
-          inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
-          inputs[i].dispatchEvent(new Event('change', {{bubbles:true}}));
-          return;
-        }}
-      }}
-      // Fallback: tenta pelo aria-label
-      for (var i=0; i<inputs.length; i++) {{
-        var lbl = inputs[i].getAttribute('aria-label') || '';
-        if (lbl.indexOf('{uid}') !== -1) {{
-          var setter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype,'value').set;
-          setter.call(inputs[i], txt);
-          inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
-          return;
-        }}
-      }}
+      ro_{uid}.start();
     }}
     </script>
     """
+    st.components.v1.html(html, height=90)
 
-    st.components.v1.html(html, height=100)
-
-    texto = st.text_input(
-        label_input,
-        key=key_st,
-        placeholder=placeholder_unico,
-        label_visibility="collapsed"
+    # Campo editável — já vem preenchido com o texto capturado
+    novo = st.text_input(
+        rotulo,
+        value=texto_atual,
+        placeholder=placeholder_txt,
+        key=key_input,
+        label_visibility="visible"
     )
-    return texto.strip()
+    # Sincroniza edição manual com a memória
+    st.session_state[f"mem_voz_{uid}"] = novo
+    return novo.strip()
 
 
 # =========================================================
@@ -2610,7 +2603,7 @@ def interpretar_com_gpt(atividade, tempo_fala, freq_fala, extra_fala="", tipo_ex
     prompt_extra = f'\n- "{tipo_extra}": "{extra_fala}"' if tipo_extra and extra_fala else ""
     prompt = f"""
 Interprete descrições faladas de atividades profissionais.
-Retorne SOMENTE JSON válido, sem explicações ou markdown.
+Retorne SOMENTE JSON válido, sem markdown.
 
 - Atividade: "{atividade}"
 - Tempo: "{tempo_fala}"
@@ -2625,8 +2618,8 @@ Formato exato:
   "extra": "<valor extra ou vazio>"
 }}
 
-Regras: DVD=várias vezes/dia, D=diário/todo dia, S=semanal, Q=quinzenal,
-M=mensal, T=trimestral, A=anual. Padrão se não interpretar: D, 1h, 0min.
+DVD=várias vezes/dia, D=diário, S=semanal, Q=quinzenal, M=mensal, T=trimestral, A=anual.
+Padrão se não interpretar: D, 1h, 0min.
 """
     try:
         h    = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
@@ -2666,45 +2659,58 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
     df = df[cols].head(15).fillna("").astype(str)
 
     with st.expander(f"🎤 Adicionar via voz", expanded=True):
+        st.caption("1️⃣ Clique 🎤 e fale · 2️⃣ Texto aparece no campo · 3️⃣ Clique ✨ Interpretar com IA")
 
-        st.caption("🟢 Clique no botão 🎤, fale, o texto aparece no campo abaixo. Depois clique ✨ Interpretar.")
+        # Passo 1 — Descrição principal
+        fala_p = campo_voz(
+            uid=f"{chave}p1",
+            rotulo=f"✏️ PASSO 1 — {label_p.capitalize()}:",
+            placeholder_txt=f"Fale acima ou digite aqui a {label_p}"
+        )
 
-        # Passo 1
-        st.markdown(f"**PASSO 1 — Descreva a {label_p}:**")
-        fala_p = campo_voz_js(f"{chave}_p1", f"Falar {label_p}", f"Descreva a {label_p}")
-
-        # Passo extra
+        # Passo extra (setor / impacto)
         fala_extra = ""
-        p_t, p_f   = "PASSO 2", "PASSO 3"
+        p_t, p_f   = "2", "3"
         if col_e and label_extra:
-            st.markdown(f"**PASSO 2 — {label_extra}:**")
-            fala_extra = campo_voz_js(f"{chave}_extra", f"Falar {label_extra}", f"Qual é o {label_extra}?")
-            p_t, p_f   = "PASSO 3", "PASSO 4"
+            fala_extra = campo_voz(
+                uid=f"{chave}ex",
+                rotulo=f"✏️ PASSO 2 — {label_extra}:",
+                placeholder_txt=f"Fale acima ou digite o {label_extra}"
+            )
+            p_t, p_f = "3", "4"
 
-        st.markdown(f"**{p_t} — Quanto tempo leva?** Ex: *duas horas*, *30 minutos*, *uma hora e meia*")
-        fala_tempo = campo_voz_js(f"{chave}_tempo", "Falar tempo", "Quanto tempo leva?")
+        # Passo Tempo
+        fala_tempo = campo_voz(
+            uid=f"{chave}tm",
+            rotulo=f"✏️ PASSO {p_t} — Tempo (ex: duas horas, 30 minutos):",
+            placeholder_txt="Fale acima ou digite o tempo"
+        )
 
-        st.markdown(f"**{p_f} — Com que frequência?** Ex: *todo dia*, *toda semana*, *mensal*")
-        fala_freq = campo_voz_js(f"{chave}_freq", "Falar frequência", "Com que frequência?")
+        # Passo Frequência
+        fala_freq = campo_voz(
+            uid=f"{chave}fq",
+            rotulo=f"✏️ PASSO {p_f} — Frequência (ex: todo dia, toda semana):",
+            placeholder_txt="Fale acima ou digite a frequência"
+        )
 
         cb1, cb2 = st.columns([3, 1])
         with cb1:
-            if st.button(f"✨ Interpretar com IA e adicionar", key=f"gpt_{chave}", use_container_width=True):
+            if st.button(f"✨ Interpretar com IA e adicionar à tabela",
+                         key=f"gpt_{chave}", use_container_width=True):
                 if not fala_p:
-                    st.warning("⚠️ Fale ou digite no Passo 1.")
+                    st.warning("⚠️ Preencha o Passo 1 — fale ou digite a descrição.")
                 elif not fala_tempo or not fala_freq:
                     st.warning("⚠️ Preencha também tempo e frequência.")
                 else:
-                    with st.spinner("🧠 Interpretando..."):
-                        res = interpretar_com_gpt(fala_p, fala_tempo, fala_freq, fala_extra, label_extra or "")
-
+                    with st.spinner("🧠 GPT interpretando..."):
+                        res = interpretar_com_gpt(fala_p, fala_tempo, fala_freq,
+                                                   fala_extra, label_extra or "")
                     st.success(
                         f"✅ **{res.get('atividade','')}** | "
                         f"⏱️ {res.get('horas',0)}h {res.get('minutos',0)}min | "
                         f"📅 {res.get('frequencia','D')}"
                         + (f" | 🏢 {res.get('extra','')}" if res.get("extra") else "")
                     )
-
                     for idx, row in df.iterrows():
                         if str(row[col_p]).strip() == "":
                             df.at[idx, col_p]        = res.get("atividade", fala_p)
@@ -2712,24 +2718,25 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
                             df.at[idx, "Minutos"]    = f"{res.get('minutos',0)} min"
                             df.at[idx, "Frequência"] = res.get("frequencia", "D")
                             if col_e and res.get("extra"):
-                                df.at[idx, col_e]    = res.get("extra", "")
+                                df.at[idx, col_e] = res.get("extra", "")
                             if "tabelas" not in st.session_state["rascunho"]:
                                 st.session_state["rascunho"]["tabelas"] = {}
                             st.session_state["rascunho"]["tabelas"][chave] = df.to_dict("records")
-                            st.success(f"✅ Linha {idx+1} preenchida!")
+                            st.success(f"✅ Linha {idx+1} preenchida automaticamente!")
                             st.rerun()
                             break
                     else:
                         st.warning("⚠️ Tabela cheia. Edite abaixo.")
 
         with cb2:
-            if st.button("🗑️ Limpar", key=f"clr_{chave}", use_container_width=True):
-                for s in ["p1","extra","tempo","freq"]:
-                    k = f"voz_{chave}_{s}"
-                    if k in st.session_state: st.session_state[k] = ""
+            if st.button("🗑️ Limpar campos", key=f"clr_{chave}", use_container_width=True):
+                for s in ["p1","ex","tm","fq"]:
+                    for k in [f"mem_voz_{chave}{s}", f"inp_voz_{chave}{s}"]:
+                        if k in st.session_state:
+                            st.session_state[k] = ""
                 st.rerun()
 
-    st.markdown("##### ✏️ Revise ou edite diretamente:")
+    st.markdown("##### ✏️ Revise ou edite diretamente na tabela:")
     cfg = {
         col_p:        st.column_config.TextColumn("Descrição", width="large"),
         "Frequência": st.column_config.SelectboxColumn("Frequência", options=lista_freq, width="small"),
@@ -2749,7 +2756,7 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
 # IDENTIFICAÇÃO E CARREGAMENTO
 # =========================================================
 st.title("📋 NetExame · Rascunho")
-st.caption("Preencha por voz ou manualmente — Chrome/Edge recomendado")
+st.caption("Preencha por voz ou manualmente — Chrome/Edge recomendado para voz")
 
 st.subheader("👤 Identificação")
 nome_input = st.text_input("NOME COMPLETO:").strip().upper()
@@ -2882,11 +2889,13 @@ if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
         st.session_state["rascunho"] = payload
         st.success(f"✅ Rascunho de {nome_input} salvo!")
         st.download_button("📥 Baixar cópia JSON", conteudo_json.encode("utf-8"),
-                           f"{nome_limpo}_rascunho.json", "application/json", use_container_width=True)
+                           f"{nome_limpo}_rascunho.json", "application/json",
+                           use_container_width=True)
     except Exception as e:
         st.error(f"❌ Erro: {e}")
         st.download_button("📥 Backup Emergência", conteudo_json.encode("utf-8"),
-                           f"{nome_limpo}_EMERGENCIA.json", "application/json", use_container_width=True)
+                           f"{nome_limpo}_EMERGENCIA.json", "application/json",
+                           use_container_width=True)
 
 st.caption("NetExame · Rascunho com voz — formulário principal continua funcionando normalmente.")
 
