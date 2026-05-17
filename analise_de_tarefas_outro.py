@@ -2502,109 +2502,146 @@ def val(chave, default=""):
     return d.get("campos", {}).get(chave, d.get(chave, default))
 
 # =========================================================
-# INSTALA E IMPORTA mic_recorder
+# CAMPO DE VOZ — Web Speech API injetando no DOM pai
 # =========================================================
-try:
-    from streamlit_mic_recorder import mic_recorder
-except ImportError:
-    import subprocess, sys
-    subprocess.run([sys.executable, "-m", "pip", "install", "streamlit-mic-recorder"], check=True)
-    from streamlit_mic_recorder import mic_recorder
+def campo_voz_js(uid: str, instrucao: str, label_input: str) -> str:
+    """
+    Renderiza botão de microfone em iframe.
+    Ao detectar fala, injeta o texto diretamente no input do Streamlit
+    encontrado pelo placeholder/label no DOM pai.
+    Retorna o valor atual do text_input correspondente.
+    """
+    key_st = f"voz_{uid}"
+
+    # O placeholder único é o que o JS usa para achar o input correto no DOM
+    placeholder_unico = f"__voz__{uid}__"
+
+    html = f"""
+    <style>
+      body {{ margin:0; padding:2px; background:transparent; font-family:sans-serif; }}
+      .vbtn {{
+        background: linear-gradient(135deg,#1a3a5c,#2563a8);
+        color:#fff; border:none; border-radius:8px;
+        padding:9px 20px; font-size:14px; cursor:pointer;
+        display:inline-flex; align-items:center; gap:7px;
+        transition:all .2s; width:100%;
+      }}
+      .vbtn.rec {{ background:linear-gradient(135deg,#7b0000,#cc0000); animation:p .8s infinite; }}
+      @keyframes p {{ 0%,100%{{opacity:1}} 50%{{opacity:.55}} }}
+      #st_{uid} {{ margin-top:6px; padding:6px 10px; background:#071520;
+                   border:1px solid #2563a8; border-radius:6px;
+                   color:#7ec8e3; font-size:13px; min-height:28px; }}
+    </style>
+    <button class="vbtn" id="b_{uid}" onclick="go()">🎤 {instrucao}</button>
+    <div id="st_{uid}">Aguardando fala...</div>
+    <script>
+    var ativo = false, recObj = null;
+    function go() {{
+      if (ativo) {{ recObj && recObj.stop(); return; }}
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {{ document.getElementById('st_{uid}').innerText='❌ Abra no Chrome ou Edge'; return; }}
+      recObj = new SR();
+      recObj.lang='pt-BR'; recObj.continuous=false; recObj.interimResults=false;
+      ativo = true;
+      document.getElementById('b_{uid}').className='vbtn rec';
+      document.getElementById('b_{uid}').innerText='⏹️ Gravando — clique para parar';
+      document.getElementById('st_{uid}').innerText='🔴 Fale agora...';
+
+      recObj.onresult = function(e) {{
+        var txt = e.results[0][0].transcript;
+        document.getElementById('st_{uid}').innerText = '✅ ' + txt;
+        injetar(txt);
+      }};
+      recObj.onerror = function(e) {{
+        document.getElementById('st_{uid}').innerText = '❌ ' + e.error;
+      }};
+      recObj.onend = function() {{
+        ativo = false;
+        document.getElementById('b_{uid}').className='vbtn';
+        document.getElementById('b_{uid}').innerText='🎤 {instrucao}';
+      }};
+      recObj.start();
+    }}
+
+    function injetar(txt) {{
+      // Procura o input pelo placeholder único no documento pai
+      var doc = window.parent.document;
+      var inputs = doc.querySelectorAll('input[type="text"], input:not([type])');
+      for (var i=0; i<inputs.length; i++) {{
+        if (inputs[i].placeholder && inputs[i].placeholder.indexOf('{uid}') !== -1) {{
+          var setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,'value').set;
+          setter.call(inputs[i], txt);
+          inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
+          inputs[i].dispatchEvent(new Event('change', {{bubbles:true}}));
+          return;
+        }}
+      }}
+      // Fallback: tenta pelo aria-label
+      for (var i=0; i<inputs.length; i++) {{
+        var lbl = inputs[i].getAttribute('aria-label') || '';
+        if (lbl.indexOf('{uid}') !== -1) {{
+          var setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,'value').set;
+          setter.call(inputs[i], txt);
+          inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
+          return;
+        }}
+      }}
+    }}
+    </script>
+    """
+
+    st.components.v1.html(html, height=100)
+
+    texto = st.text_input(
+        label_input,
+        key=key_st,
+        placeholder=placeholder_unico,
+        label_visibility="collapsed"
+    )
+    return texto.strip()
+
 
 # =========================================================
-# GPT: TRANSCREVE ÁUDIO E INTERPRETA
+# GPT: INTERPRETA TEMPO E FREQUÊNCIA
 # =========================================================
-def transcrever_audio(audio_bytes: bytes) -> str:
-    """Envia áudio para Whisper da OpenAI e retorna texto."""
-    try:
-        resp = requests.post(
-            "https://api.openai.com/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            files={"file": ("audio.wav", audio_bytes, "audio/wav")},
-            data={"model": "whisper-1", "language": "pt"},
-            timeout=20
-        )
-        return resp.json().get("text", "").strip()
-    except Exception as e:
-        st.warning(f"⚠️ Erro na transcrição: {e}")
-        return ""
-
-def interpretar_com_gpt(atividade: str, tempo_fala: str, freq_fala: str,
-                         extra_fala: str = "", tipo_extra: str = "") -> dict:
-    prompt_extra = f'\n- "{tipo_extra}" falado: "{extra_fala}"' if tipo_extra and extra_fala else ""
+def interpretar_com_gpt(atividade, tempo_fala, freq_fala, extra_fala="", tipo_extra=""):
+    prompt_extra = f'\n- "{tipo_extra}": "{extra_fala}"' if tipo_extra and extra_fala else ""
     prompt = f"""
 Interprete descrições faladas de atividades profissionais.
-Retorne SOMENTE JSON válido, sem explicações.
+Retorne SOMENTE JSON válido, sem explicações ou markdown.
 
-Entradas:
 - Atividade: "{atividade}"
-- Tempo falado: "{tempo_fala}"
-- Frequência falada: "{freq_fala}"{prompt_extra}
+- Tempo: "{tempo_fala}"
+- Frequência: "{freq_fala}"{prompt_extra}
 
-Retorne EXATAMENTE:
+Formato exato:
 {{
-  "atividade": "<descrição limpa, capitalizada>",
+  "atividade": "<descrição limpa e capitalizada>",
   "horas": <inteiro 0-24>,
-  "minutos": <um de: 0,5,10,15,20,25,30,35,40,45,50,55>,
+  "minutos": <0|5|10|15|20|25|30|35|40|45|50|55>,
   "frequencia": "<DVD|D|S|Q|M|T|A>",
-  "extra": "<campo extra se informado, senão vazio>"
+  "extra": "<valor extra ou vazio>"
 }}
 
-Regras de frequência:
-DVD=várias vezes ao dia, D=diário/todo dia, S=semanal,
-Q=quinzenal, M=mensal, T=trimestral, A=anual
-Se não interpretar frequência use D. Se não interpretar tempo use horas=1 minutos=0.
+Regras: DVD=várias vezes/dia, D=diário/todo dia, S=semanal, Q=quinzenal,
+M=mensal, T=trimestral, A=anual. Padrão se não interpretar: D, 1h, 0min.
 """
     try:
-        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
-        body = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}],
+        h    = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+        body = {"model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1, "max_tokens": 200}
-        resp = requests.post("https://api.openai.com/v1/chat/completions",
-                             headers=headers, json=body, timeout=15)
-        conteudo = resp.json()["choices"][0]["message"]["content"]
-        conteudo = re.sub(r"```[a-z]*", "", conteudo).replace("```", "").strip()
-        return json.loads(conteudo)
-    except Exception as e:
-        st.warning(f"⚠️ GPT não respondeu ({e}). Usando valores padrão.")
-        return {"atividade": atividade, "horas": 1, "minutos": 0, "frequencia": "D", "extra": extra_fala}
+        r    = requests.post("https://api.openai.com/v1/chat/completions",
+                             headers=h, json=body, timeout=15)
+        txt  = r.json()["choices"][0]["message"]["content"]
+        txt  = re.sub(r"```[a-z]*", "", txt).replace("```", "").strip()
+        return json.loads(txt)
+    except:
+        return {"atividade": atividade, "horas": 1, "minutos": 0,
+                "frequencia": "D", "extra": extra_fala}
 
-# =========================================================
-# MICROFONE FUNCIONAL (via streamlit-mic-recorder + Whisper)
-# =========================================================
-def campo_voz(uid: str, instrucao: str) -> str:
-    """
-    Exibe microfone real via streamlit-mic-recorder.
-    Áudio gravado → Whisper transcreve → retorna texto.
-    Usuário pode editar o texto antes de confirmar.
-    """
-    st.markdown(f"**🎤 {instrucao}**")
-    st.caption("Clique em REC, fale, clique em STOP — o texto aparece automaticamente")
-
-    audio = mic_recorder(
-        start_prompt="⏺️ REC",
-        stop_prompt="⏹️ STOP",
-        key=f"mic_{uid}",
-        use_container_width=False
-    )
-
-    key_texto = f"texto_{uid}"
-    if key_texto not in st.session_state:
-        st.session_state[key_texto] = ""
-
-    if audio and audio.get("bytes"):
-        with st.spinner("🧠 Transcrevendo..."):
-            transcrito = transcrever_audio(audio["bytes"])
-        if transcrito:
-            st.session_state[key_texto] = transcrito
-            st.success(f"✅ Transcrito: *{transcrito}*")
-
-    texto_editavel = st.text_input(
-        "📝 Edite se necessário:",
-        value=st.session_state.get(key_texto, ""),
-        key=f"edit_{uid}"
-    )
-    st.session_state[key_texto] = texto_editavel
-    return texto_editavel.strip()
 
 # =========================================================
 # MOTOR DE TABELA COM VOZ GUIADA
@@ -2618,10 +2655,9 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
 
     st.markdown(f"### {icone} {titulo}")
 
-    with st.expander("ℹ️ Legenda de Frequência", expanded=False):
+    with st.expander("ℹ️ Legenda", expanded=False):
         st.markdown("DVD=Várias vezes/dia · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual")
 
-    # Carrega dados salvos
     dados = st.session_state.get("rascunho", {}).get("tabelas", {}).get(chave, [])
     cols  = [col_p] + ([col_e] if col_e else []) + ["Horas", "Minutos", "Frequência"]
     df    = pd.DataFrame(dados).reindex(columns=cols, fill_value="")
@@ -2629,76 +2665,70 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
         df.loc[len(df)] = [""] * len(cols)
     df = df[cols].head(15).fillna("").astype(str)
 
-    # Painel de voz
     with st.expander(f"🎤 Adicionar via voz", expanded=True):
 
-        # Passo 1 — descrição principal
+        st.caption("🟢 Clique no botão 🎤, fale, o texto aparece no campo abaixo. Depois clique ✨ Interpretar.")
+
+        # Passo 1
         st.markdown(f"**PASSO 1 — Descreva a {label_p}:**")
-        fala_p = campo_voz(f"{chave}_p1", f"Descreva a {label_p}")
+        fala_p = campo_voz_js(f"{chave}_p1", f"Falar {label_p}", f"Descreva a {label_p}")
 
-        # Passo extra (setor/impacto) — só dificuldades e sugestões
+        # Passo extra
         fala_extra = ""
+        p_t, p_f   = "PASSO 2", "PASSO 3"
         if col_e and label_extra:
-            st.markdown(f"**PASSO 2 — Informe: {label_extra}:**")
-            fala_extra = campo_voz(f"{chave}_extra", f"Qual é o {label_extra}?")
-            p_tempo, p_freq = "PASSO 3", "PASSO 4"
-        else:
-            p_tempo, p_freq = "PASSO 2", "PASSO 3"
+            st.markdown(f"**PASSO 2 — {label_extra}:**")
+            fala_extra = campo_voz_js(f"{chave}_extra", f"Falar {label_extra}", f"Qual é o {label_extra}?")
+            p_t, p_f   = "PASSO 3", "PASSO 4"
 
-        # Tempo
-        st.markdown(f"**{p_tempo} — Quanto tempo leva?** Ex: *duas horas*, *trinta minutos*")
-        fala_tempo = campo_voz(f"{chave}_tempo", "Quanto tempo leva?")
+        st.markdown(f"**{p_t} — Quanto tempo leva?** Ex: *duas horas*, *30 minutos*, *uma hora e meia*")
+        fala_tempo = campo_voz_js(f"{chave}_tempo", "Falar tempo", "Quanto tempo leva?")
 
-        # Frequência
-        st.markdown(f"**{p_freq} — Com que frequência?** Ex: *todo dia*, *toda semana*, *mensal*")
-        fala_freq = campo_voz(f"{chave}_freq", "Com que frequência?")
+        st.markdown(f"**{p_f} — Com que frequência?** Ex: *todo dia*, *toda semana*, *mensal*")
+        fala_freq = campo_voz_js(f"{chave}_freq", "Falar frequência", "Com que frequência?")
 
-        col_b1, col_b2 = st.columns([3, 1])
-
-        with col_b1:
+        cb1, cb2 = st.columns([3, 1])
+        with cb1:
             if st.button(f"✨ Interpretar com IA e adicionar", key=f"gpt_{chave}", use_container_width=True):
                 if not fala_p:
-                    st.warning("⚠️ Preencha pelo menos o Passo 1.")
+                    st.warning("⚠️ Fale ou digite no Passo 1.")
                 elif not fala_tempo or not fala_freq:
                     st.warning("⚠️ Preencha também tempo e frequência.")
                 else:
-                    with st.spinner("🧠 GPT interpretando..."):
-                        res = interpretar_com_gpt(fala_p, fala_tempo, fala_freq,
-                                                   fala_extra, label_extra or "")
+                    with st.spinner("🧠 Interpretando..."):
+                        res = interpretar_com_gpt(fala_p, fala_tempo, fala_freq, fala_extra, label_extra or "")
 
-                    st.info(f"✅ **{res.get('atividade','')}** | "
-                            f"⏱️ {res.get('horas',0)}h {res.get('minutos',0)}min | "
-                            f"📅 {res.get('frequencia','D')}"
-                            + (f" | 🏢 {res.get('extra','')}" if res.get('extra') else ""))
+                    st.success(
+                        f"✅ **{res.get('atividade','')}** | "
+                        f"⏱️ {res.get('horas',0)}h {res.get('minutos',0)}min | "
+                        f"📅 {res.get('frequencia','D')}"
+                        + (f" | 🏢 {res.get('extra','')}" if res.get("extra") else "")
+                    )
 
-                    # Insere na próxima linha vazia
                     for idx, row in df.iterrows():
                         if str(row[col_p]).strip() == "":
-                            df.at[idx, col_p]         = res.get("atividade", fala_p)
-                            df.at[idx, "Horas"]       = f"{res.get('horas',1)} h"
-                            df.at[idx, "Minutos"]     = f"{res.get('minutos',0)} min"
-                            df.at[idx, "Frequência"]  = res.get("frequencia", "D")
+                            df.at[idx, col_p]        = res.get("atividade", fala_p)
+                            df.at[idx, "Horas"]      = f"{res.get('horas',1)} h"
+                            df.at[idx, "Minutos"]    = f"{res.get('minutos',0)} min"
+                            df.at[idx, "Frequência"] = res.get("frequencia", "D")
                             if col_e and res.get("extra"):
-                                df.at[idx, col_e] = res.get("extra", "")
-
+                                df.at[idx, col_e]    = res.get("extra", "")
                             if "tabelas" not in st.session_state["rascunho"]:
                                 st.session_state["rascunho"]["tabelas"] = {}
                             st.session_state["rascunho"]["tabelas"][chave] = df.to_dict("records")
-                            st.success(f"✅ Adicionado na linha {idx + 1}!")
+                            st.success(f"✅ Linha {idx+1} preenchida!")
                             st.rerun()
                             break
                     else:
-                        st.warning("⚠️ Tabela cheia. Edite diretamente abaixo.")
+                        st.warning("⚠️ Tabela cheia. Edite abaixo.")
 
-        with col_b2:
-            if st.button("🗑️ Limpar", key=f"clear_{chave}", use_container_width=True):
-                for suf in ["p1", "extra", "tempo", "freq"]:
-                    for prefix in [f"texto_{chave}_{suf}", f"edit_{chave}_{suf}"]:
-                        if prefix in st.session_state:
-                            st.session_state[prefix] = ""
+        with cb2:
+            if st.button("🗑️ Limpar", key=f"clr_{chave}", use_container_width=True):
+                for s in ["p1","extra","tempo","freq"]:
+                    k = f"voz_{chave}_{s}"
+                    if k in st.session_state: st.session_state[k] = ""
                 st.rerun()
 
-    # Tabela editável para revisão manual
     st.markdown("##### ✏️ Revise ou edite diretamente:")
     cfg = {
         col_p:        st.column_config.TextColumn("Descrição", width="large"),
@@ -2714,11 +2744,12 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
     st.markdown("---")
     return editor
 
+
 # =========================================================
 # IDENTIFICAÇÃO E CARREGAMENTO
 # =========================================================
 st.title("📋 NetExame · Rascunho")
-st.caption("Use o microfone ou preencha manualmente — funciona em qualquer navegador")
+st.caption("Preencha por voz ou manualmente — Chrome/Edge recomendado")
 
 st.subheader("👤 Identificação")
 nome_input = st.text_input("NOME COMPLETO:").strip().upper()
@@ -2727,15 +2758,12 @@ if not nome_input:
     st.info("Digite seu nome para começar.")
     st.stop()
 
-st.session_state["nome_colab"] = nome_input
 nome_arq = f"rascunhos/{nome_input.replace(' ', '_')}.json"
-
 if st.session_state.get("usuario_atual") != nome_input:
     st.session_state["usuario_atual"] = nome_input
     st.session_state["logado"]        = False
 
 confirmar = st.checkbox("✅ CLIQUE PARA CARREGAR MEUS DADOS")
-
 if confirmar and not st.session_state.get("logado"):
     try:
         conteudo = repo.get_contents(nome_arq)
@@ -2770,15 +2798,17 @@ objetivo = st.text_area("Em que consiste seu trabalho e qual seu Principal Objet
 sistemas = st.text_area("Sistemas Utilizados na Empresa:", value=val("sistemas"))
 
 # =========================================================
-# 5 TABELAS COM VOZ GUIADA
+# 5 TABELAS COM VOZ
 # =========================================================
 st.markdown("---")
 st.subheader("📋 Tabelas de Atividades")
-st.info("**Como usar:** Clique ⏺️ REC → fale → clique ⏹️ STOP → texto aparece → clique ✨ Interpretar com IA")
 
-e_alta   = tabela_com_voz("Atividades de Alta Complexidade",   "alta",        "Atividade",  label_p="atividade de alta complexidade",  icone="🚀")
-e_normal = tabela_com_voz("Atividades de Complexidade Normal", "normal",      "Atividade",  label_p="atividade de complexidade normal", icone="📋")
-e_baixa  = tabela_com_voz("Atividades de Baixa Complexidade",  "baixa",       "Atividade",  label_p="atividade de baixa complexidade", icone="⏳")
+e_alta   = tabela_com_voz("Atividades de Alta Complexidade",   "alta",        "Atividade",
+                           label_p="atividade de alta complexidade", icone="🚀")
+e_normal = tabela_com_voz("Atividades de Complexidade Normal", "normal",      "Atividade",
+                           label_p="atividade de complexidade normal", icone="📋")
+e_baixa  = tabela_com_voz("Atividades de Baixa Complexidade",  "baixa",       "Atividade",
+                           label_p="atividade de baixa complexidade", icone="⏳")
 e_dif    = tabela_com_voz("Dificuldades e Bloqueios",           "dificuldades","Dificuldade",
                            col_e="Setor Envolvido", nome_e="Setor Envolvido",
                            label_p="dificuldade", label_extra="Setor Envolvido", icone="⚠️")
@@ -2787,7 +2817,7 @@ e_sug    = tabela_com_voz("Sugestões de Melhoria",              "sugestoes",   
                            label_p="sugestão", label_extra="Impacto Esperado", icone="💡")
 
 # =========================================================
-# BARRA DE PROGRESSO
+# PROGRESSO
 # =========================================================
 st.markdown("---")
 st.subheader("📊 Progresso")
@@ -2796,9 +2826,9 @@ def contar(df, col):
     if df is None: return 0
     return int(df[col].astype(str).str.strip().ne("").sum())
 
-total_ativ = contar(e_alta,"Atividade") + contar(e_normal,"Atividade") + contar(e_baixa,"Atividade")
 campos_ok  = sum(1 for c in [cargo,depto,setor,chefe,unidade,escolaridade,devolver_em,objetivo,sistemas]
                  if str(c).strip() != "")
+total_ativ = contar(e_alta,"Atividade")+contar(e_normal,"Atividade")+contar(e_baixa,"Atividade")
 
 c1,c2,c3,c4 = st.columns(4)
 c1.metric("📝 Campos básicos",  f"{campos_ok}/9")
@@ -2807,8 +2837,8 @@ c3.metric("⚠️ Dificuldades",   f"{contar(e_dif,'Dificuldade')}/2 mín.")
 c4.metric("💡 Sugestões",       f"{contar(e_sug,'Sugestão')}/2 mín.")
 
 prog = min((campos_ok/9*0.3)+(min(total_ativ,10)/10*0.4)+
-           (min(contar(e_dif,'Dificuldade'),2)/2*0.15)+
-           (min(contar(e_sug,'Sugestão'),2)/2*0.15), 1.0)
+           (min(contar(e_dif,"Dificuldade"),2)/2*0.15)+
+           (min(contar(e_sug,"Sugestão"),2)/2*0.15), 1.0)
 st.progress(prog, text=f"Rascunho {int(prog*100)}% completo")
 
 # =========================================================
@@ -2816,7 +2846,6 @@ st.progress(prog, text=f"Rascunho {int(prog*100)}% completo")
 # =========================================================
 st.markdown("---")
 if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
-
     if not nome_input or len(nome_input) < 3:
         st.error("⚠️ Nome inválido.")
         st.stop()
@@ -2850,28 +2879,16 @@ if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
             repo.update_file(f.path, f"Update: {nome_input}", conteudo_json, f.sha)
         except:
             repo.create_file(caminho_github, f"Novo: {nome_input}", conteudo_json)
-
         st.session_state["rascunho"] = payload
         st.success(f"✅ Rascunho de {nome_input} salvo!")
-
-        st.download_button(
-            label="📥 Baixar cópia JSON",
-            data=conteudo_json.encode("utf-8"),
-            file_name=f"{nome_limpo}_rascunho.json",
-            mime="application/json",
-            use_container_width=True
-        )
-
+        st.download_button("📥 Baixar cópia JSON", conteudo_json.encode("utf-8"),
+                           f"{nome_limpo}_rascunho.json", "application/json", use_container_width=True)
     except Exception as e:
-        st.error(f"❌ Erro ao salvar: {e}")
-        st.download_button(
-            label="📥 Backup de Emergência",
-            data=conteudo_json.encode("utf-8"),
-            file_name=f"{nome_limpo}_EMERGENCIA.json",
-            mime="application/json",
-            use_container_width=True
-        )
+        st.error(f"❌ Erro: {e}")
+        st.download_button("📥 Backup Emergência", conteudo_json.encode("utf-8"),
+                           f"{nome_limpo}_EMERGENCIA.json", "application/json", use_container_width=True)
 
 st.caption("NetExame · Rascunho com voz — formulário principal continua funcionando normalmente.")
+
 
 
