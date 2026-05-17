@@ -2577,8 +2577,9 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
                         if col_e:
                             linhas[i][col_e] = texto_extra.strip()
                         st.session_state["rascunho"]["tabelas"][chave] = linhas
-                        st.session_state[key_p]    = ""
-                        st.session_state[key_extra] = ""
+                        del st.session_state[key_p]
+                        if key_extra in st.session_state:
+                            del st.session_state[key_extra]
                         st.success(f"✅ Adicionado: *{texto_p.strip()}*")
                         st.rerun()
                         break
@@ -2753,5 +2754,6 @@ if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_widt
                            use_container_width=True)
 
 st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+
 
 
