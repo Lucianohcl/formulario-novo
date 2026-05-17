@@ -2602,9 +2602,9 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
 
     dados = st.session_state["rascunho"]["tabelas"][chave]
     df    = pd.DataFrame(dados).reindex(columns=cols, fill_value="")
-    while len(df) < 5:
+    while len(df) < 15:
         df.loc[len(df)] = {c: "" for c in cols}
-    df = df[cols].fillna("").astype(str)
+    df = df[cols].head(15).fillna("").astype(str)
 
     cfg = {
         col_p:        st.column_config.TextColumn("Descrição", width="large"),
@@ -2773,6 +2773,7 @@ if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_widt
                            use_container_width=True)
 
 st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+
 
 
 
