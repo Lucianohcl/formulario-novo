@@ -2472,6 +2472,7 @@ if st.session_state.get("pagina") == "disc":
 import streamlit as st
 import pandas as pd
 import json
+import re
 import requests
 from datetime import datetime
 from github import Github
@@ -2501,67 +2502,138 @@ def val(chave, default=""):
     return d.get("campos", {}).get(chave, d.get(chave, default))
 
 # =========================================================
-# mic_recorder
+# SALVAR / CARREGAR LINHAS NO GITHUB (JSON separado)
 # =========================================================
-try:
-    from streamlit_mic_recorder import mic_recorder
-except ImportError:
-    import subprocess, sys
-    subprocess.run([sys.executable, "-m", "pip", "install", "streamlit-mic-recorder"], check=True)
-    from streamlit_mic_recorder import mic_recorder
+def caminho_linhas(nome_colab: str, chave: str) -> str:
+    nome_limpo = nome_colab.replace(" ", "_").upper()
+    return f"rascunhos/{nome_limpo}_linhas_{chave}.json"
 
-# =========================================================
-# WHISPER
-# =========================================================
-def transcrever(audio_bytes: bytes) -> str:
+def salvar_linha_github(nome_colab, chave, col_p, texto, col_e=None, texto_e=""):
+    """Adiciona uma linha no JSON separado de linhas da tabela."""
     try:
-        resp = requests.post(
-            "https://api.openai.com/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            files={"file": ("audio.wav", audio_bytes, "audio/wav")},
-            data={"model": "whisper-1", "language": "pt"},
-            timeout=20
-        )
-        return resp.json().get("text", "").strip()
+        caminho = caminho_linhas(nome_colab, chave)
+        linhas  = []
+        try:
+            f      = repo.get_contents(caminho)
+            linhas = json.loads(f.decoded_content.decode())
+            sha    = f.sha
+        except:
+            sha = None
+
+        nova_linha = {col_p: texto, "Horas": "", "Minutos": "", "Frequência": ""}
+        if col_e:
+            nova_linha[col_e] = texto_e
+
+        linhas.append(nova_linha)
+        conteudo = json.dumps(linhas, ensure_ascii=False, indent=2)
+
+        if sha:
+            repo.update_file(caminho, f"Linha {chave}", conteudo, sha)
+        else:
+            repo.create_file(caminho, f"Linha {chave}", conteudo)
+
+        # Atualiza também no session_state para a tabela recarregar
+        if "tabelas" not in st.session_state["rascunho"]:
+            st.session_state["rascunho"]["tabelas"] = {}
+        st.session_state["rascunho"]["tabelas"][chave] = linhas
+        return True
     except Exception as e:
-        st.warning(f"⚠️ Erro Whisper: {e}")
-        return ""
+        st.error(f"❌ Erro ao salvar linha: {e}")
+        return False
+
+def carregar_linhas_github(nome_colab, chave):
+    """Carrega linhas do JSON separado."""
+    try:
+        caminho = caminho_linhas(nome_colab, chave)
+        f       = repo.get_contents(caminho)
+        return json.loads(f.decoded_content.decode())
+    except:
+        return []
 
 # =========================================================
-# SALVA LINHA DIRETO NO JSON DO SESSION_STATE
+# BOTÃO DE VOZ — exatamente como no script que funcionava
 # =========================================================
-def salvar_linha_json(chave: str, col_p: str, texto: str, col_e: str = None):
-    """Insere nova linha na próxima posição vazia do JSON e faz rerun."""
-    if "tabelas" not in st.session_state["rascunho"]:
-        st.session_state["rascunho"]["tabelas"] = {}
-    if chave not in st.session_state["rascunho"]["tabelas"]:
-        st.session_state["rascunho"]["tabelas"][chave] = []
+def campo_voz_js(uid: str, instrucao: str, label_input: str) -> str:
+    key_st            = f"voz_{uid}"
+    placeholder_unico = f"__voz__{uid}__"
 
-    linhas = st.session_state["rascunho"]["tabelas"][chave]
-
-    # Garante 15 linhas
-    cols = [col_p] + ([col_e] if col_e else []) + ["Horas", "Minutos", "Frequência"]
-    while len(linhas) < 15:
-        linhas.append({c: "" for c in cols})
-
-    # Insere na próxima linha vazia
-    for i, linha in enumerate(linhas):
-        if not str(linha.get(col_p, "")).strip():
-            linhas[i][col_p] = texto
-            st.session_state["rascunho"]["tabelas"][chave] = linhas
-            return True, i + 1
-
-    return False, 0
-
-def salvar_extra_json(chave: str, col_p: str, col_e: str, texto_extra: str):
-    """Preenche coluna extra na última linha que tem col_p mas não tem col_e."""
-    linhas = st.session_state["rascunho"].get("tabelas", {}).get(chave, [])
-    for i in range(len(linhas) - 1, -1, -1):
-        if str(linhas[i].get(col_p, "")).strip() and not str(linhas[i].get(col_e, "")).strip():
-            linhas[i][col_e] = texto_extra
-            st.session_state["rascunho"]["tabelas"][chave] = linhas
-            return True
-    return False
+    html = f"""
+    <style>
+      body {{ margin:0; padding:2px; background:transparent; font-family:sans-serif; }}
+      .vbtn {{
+        background: linear-gradient(135deg,#1a3a5c,#2563a8);
+        color:#fff; border:none; border-radius:8px;
+        padding:9px 20px; font-size:14px; cursor:pointer;
+        display:inline-flex; align-items:center; gap:7px;
+        transition:all .2s; width:100%;
+      }}
+      .vbtn.rec {{ background:linear-gradient(135deg,#7b0000,#cc0000); animation:p .8s infinite; }}
+      @keyframes p {{ 0%,100%{{opacity:1}} 50%{{opacity:.55}} }}
+      #st_{uid} {{ margin-top:6px; padding:6px 10px; background:#071520;
+                   border:1px solid #2563a8; border-radius:6px;
+                   color:#7ec8e3; font-size:13px; min-height:28px; }}
+    </style>
+    <button class="vbtn" id="b_{uid}" onclick="go()">🎤 {instrucao}</button>
+    <div id="st_{uid}">Aguardando fala...</div>
+    <script>
+    var ativo = false, recObj = null;
+    function go() {{
+      if (ativo) {{ recObj && recObj.stop(); return; }}
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {{ document.getElementById('st_{uid}').innerText='❌ Abra no Chrome ou Edge'; return; }}
+      recObj = new SR();
+      recObj.lang='pt-BR'; recObj.continuous=false; recObj.interimResults=false;
+      ativo = true;
+      document.getElementById('b_{uid}').className='vbtn rec';
+      document.getElementById('b_{uid}').innerText='⏹️ Gravando — clique para parar';
+      document.getElementById('st_{uid}').innerText='🔴 Fale agora...';
+      recObj.onresult = function(e) {{
+        var txt = e.results[0][0].transcript;
+        document.getElementById('st_{uid}').innerText = '✅ ' + txt;
+        injetar(txt);
+      }};
+      recObj.onerror = function(e) {{
+        document.getElementById('st_{uid}').innerText = '❌ ' + e.error;
+      }};
+      recObj.onend = function() {{
+        ativo = false;
+        document.getElementById('b_{uid}').className='vbtn';
+        document.getElementById('b_{uid}').innerText='🎤 {instrucao}';
+      }};
+      recObj.start();
+    }}
+    function injetar(txt) {{
+      var doc = window.parent.document;
+      var inputs = doc.querySelectorAll('input[type="text"], input:not([type])');
+      for (var i=0; i<inputs.length; i++) {{
+        if (inputs[i].placeholder && inputs[i].placeholder.indexOf('{uid}') !== -1) {{
+          var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+          setter.call(inputs[i], txt);
+          inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
+          inputs[i].dispatchEvent(new Event('change', {{bubbles:true}}));
+          return;
+        }}
+      }}
+      for (var i=0; i<inputs.length; i++) {{
+        var lbl = inputs[i].getAttribute('aria-label') || '';
+        if (lbl.indexOf('{uid}') !== -1) {{
+          var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+          setter.call(inputs[i], txt);
+          inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
+          return;
+        }}
+      }}
+    }}
+    </script>
+    """
+    st.components.v1.html(html, height=100)
+    texto = st.text_input(
+        label_input,
+        key=key_st,
+        placeholder=placeholder_unico,
+        label_visibility="collapsed"
+    )
+    return texto.strip()
 
 # =========================================================
 # LISTAS
@@ -2601,16 +2673,17 @@ perguntas_disc = [
 ]
 
 # =========================================================
-# MOTOR DE TABELA — JSON É A FONTE, VOZ SALVA NO JSON
+# MOTOR DE TABELA
 # =========================================================
-def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None, icone="📋"):
+def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
+                   label_p="atividade", label_extra=None, icone="📋"):
 
     st.markdown(f"### {icone} {titulo}")
 
     with st.expander("ℹ️ Legenda", expanded=False):
         st.markdown("DVD=Várias vezes/dia · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual")
 
-    # ---- TABELA PUXA DO JSON ----
+    # Tabela puxa do session_state (JSON)
     dados = st.session_state.get("rascunho", {}).get("tabelas", {}).get(chave, [])
     cols  = [col_p] + ([col_e] if col_e else []) + ["Horas", "Minutos", "Frequência"]
     df    = pd.DataFrame(dados).reindex(columns=cols, fill_value="")
@@ -2618,48 +2691,47 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None, icone="📋"):
         df.loc[len(df)] = {c: "" for c in cols}
     df = df[cols].head(15).fillna("").astype(str)
 
-    with st.expander("🎤 Adicionar por voz", expanded=True):
-        st.caption("⏺️ REC → fale → ⏹️ STOP → Whisper salva direto no JSON → tabela atualiza")
+    nome_colab = st.session_state.get("usuario_atual", "")
 
-        # ---- MICROFONE COLUNA PRINCIPAL ----
-        st.markdown(f"**🎤 Fale a {col_p.lower()}:**")
-        audio_p  = mic_recorder(start_prompt="⏺️ REC", stop_prompt="⏹️ STOP",
-                                key=f"mic_{chave}_p", use_container_width=False)
-        key_p_id = f"id_{chave}_p"
+    with st.expander(f"🎤 Adicionar via voz", expanded=True):
+        st.caption("🟢 Clique 🎤, fale, texto aparece no campo azul → clique 💾 Salvar linha → tabela atualiza")
 
-        if audio_p and audio_p.get("bytes"):
-            if audio_p.get("id") != st.session_state.get(key_p_id):
-                st.session_state[key_p_id] = audio_p["id"]
-                with st.spinner("🧠 Transcrevendo..."):
-                    texto = transcrever(audio_p["bytes"])
-                if texto:
-                    ok, num_linha = salvar_linha_json(chave, col_p, texto, col_e)
-                    if ok:
-                        st.success(f"✅ Linha {num_linha} → *{texto}*")
-                        st.rerun()  # tabela recarrega do JSON já atualizado
-                    else:
-                        st.warning("⚠️ Tabela cheia.")
+        # Campo principal
+        st.markdown(f"**🎤 {col_p}:**")
+        fala_p = campo_voz_js(f"{chave}_p1", f"Falar {label_p}", f"Descreva a {label_p}")
 
-        # ---- MICROFONE COLUNA EXTRA ----
-        if col_e:
-            st.markdown(f"**🎤 Fale o {nome_e or col_e}** (para a última linha adicionada):")
-            audio_e  = mic_recorder(start_prompt="⏺️ REC", stop_prompt="⏹️ STOP",
-                                    key=f"mic_{chave}_e", use_container_width=False)
-            key_e_id = f"id_{chave}_e"
+        # Campo extra
+        fala_extra = ""
+        if col_e and label_extra:
+            st.markdown(f"**🎤 {label_extra}:**")
+            fala_extra = campo_voz_js(f"{chave}_extra", f"Falar {label_extra}", f"Qual é o {label_extra}?")
 
-            if audio_e and audio_e.get("bytes"):
-                if audio_e.get("id") != st.session_state.get(key_e_id):
-                    st.session_state[key_e_id] = audio_e["id"]
-                    with st.spinner("🧠 Transcrevendo..."):
-                        texto_e = transcrever(audio_e["bytes"])
-                    if texto_e:
-                        ok = salvar_extra_json(chave, col_p, col_e, texto_e)
-                        if ok:
-                            st.success(f"✅ {nome_e}: *{texto_e}*")
-                            st.rerun()
+        # Botão salvar linha no JSON
+        if st.button(f"💾 Salvar linha na tabela", key=f"salvar_{chave}",
+                     use_container_width=True, type="primary"):
+            if not fala_p:
+                st.warning(f"⚠️ Fale ou digite o campo '{col_p}' antes de salvar.")
+            else:
+                with st.spinner("Salvando..."):
+                    ok = salvar_linha_github(
+                        nome_colab, chave, col_p, fala_p, col_e, fala_extra
+                    )
+                if ok:
+                    st.success(f"✅ Linha salva: *{fala_p}*")
+                    # Limpa campos de voz
+                    st.session_state[f"voz_{chave}_p1"]  = ""
+                    st.session_state[f"voz_{chave}_extra"] = ""
+                    st.rerun()
 
-    # ---- TABELA EDITÁVEL (horas/minutos/frequência) ----
-    st.markdown("##### ✏️ Ajuste Horas, Minutos e Frequência diretamente na tabela:")
+        if st.button("🗑️ Limpar campos", key=f"clr_{chave}", use_container_width=False):
+            for s in ["p1", "extra"]:
+                k = f"voz_{chave}_{s}"
+                if k in st.session_state:
+                    st.session_state[k] = ""
+            st.rerun()
+
+    # Tabela editável — Horas/Minutos/Frequência ajustáveis direto
+    st.markdown("##### ✏️ Ajuste Horas, Minutos e Frequência na tabela:")
     cfg = {
         col_p:        st.column_config.TextColumn("Descrição", width="large"),
         "Frequência": st.column_config.SelectboxColumn("Frequência", options=lista_freq, width="small"),
@@ -2669,7 +2741,7 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None, icone="📋"):
     if col_e:
         cfg[col_e] = st.column_config.TextColumn(nome_e or col_e, width="medium")
 
-    editor = st.data_editor(df, key=f"ed_{chave}", column_config=cfg,
+    editor = st.data_editor(df, key=f"ed_{chave}_vg", column_config=cfg,
                             use_container_width=True, num_rows="fixed")
     st.markdown("---")
     return editor
@@ -2679,6 +2751,7 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None, icone="📋"):
 # IDENTIFICAÇÃO E CARREGAMENTO
 # =========================================================
 st.title("📋 NetExame · Rascunho")
+st.caption("🟢 Clique 🎤, fale → texto aparece no campo → 💾 Salvar linha → tabela atualiza | Chrome/Edge")
 
 st.subheader("👤 Identificação")
 nome_input = st.text_input("NOME COMPLETO:").strip().upper()
@@ -2696,7 +2769,25 @@ confirmar = st.checkbox("✅ CLIQUE PARA CARREGAR MEUS DADOS")
 if confirmar and not st.session_state.get("logado"):
     try:
         conteudo = repo.get_contents(nome_arq)
-        st.session_state["rascunho"] = json.loads(conteudo.decoded_content.decode())
+        rascunho = json.loads(conteudo.decoded_content.decode())
+
+        # Carrega também as linhas salvas separadamente para cada tabela
+        for chave, col_p in [("alta","Atividade"),("normal","Atividade"),
+                              ("baixa","Atividade"),("dificuldades","Dificuldade"),
+                              ("sugestoes","Sugestão")]:
+            linhas = carregar_linhas_github(nome_input, chave)
+            if linhas:
+                if "tabelas" not in rascunho:
+                    rascunho["tabelas"] = {}
+                # Mescla: linhas do rascunho principal + linhas separadas
+                existentes = rascunho["tabelas"].get(chave, [])
+                textos_existentes = {str(l.get(col_p,"")).strip() for l in existentes if l.get(col_p,"").strip()}
+                for l in linhas:
+                    if str(l.get(col_p,"")).strip() not in textos_existentes:
+                        existentes.append(l)
+                rascunho["tabelas"][chave] = existentes
+
+        st.session_state["rascunho"] = rascunho
         st.success(f"✅ Rascunho de {nome_input} carregado!")
     except:
         st.session_state["rascunho"] = {"colaborador": nome_input, "campos": {}, "tabelas": {}, "disc": {}}
@@ -2733,17 +2824,17 @@ st.markdown("---")
 st.subheader("📋 Tabelas de Atividades")
 
 e_alta   = tabela_com_voz("Atividades de Alta Complexidade",   "alta",
-                           "Atividade", icone="🚀")
+                           "Atividade", label_p="atividade de alta complexidade", icone="🚀")
 e_normal = tabela_com_voz("Atividades de Complexidade Normal", "normal",
-                           "Atividade", icone="📋")
+                           "Atividade", label_p="atividade de complexidade normal", icone="📋")
 e_baixa  = tabela_com_voz("Atividades de Baixa Complexidade",  "baixa",
-                           "Atividade", icone="⏳")
+                           "Atividade", label_p="atividade de baixa complexidade", icone="⏳")
 e_dif    = tabela_com_voz("Dificuldades e Bloqueios",          "dificuldades",
-                           "Dificuldade", col_e="Setor Envolvido",
-                           nome_e="Setor Envolvido", icone="⚠️")
+                           "Dificuldade", col_e="Setor Envolvido", nome_e="Setor Envolvido",
+                           label_p="dificuldade", label_extra="Setor Envolvido", icone="⚠️")
 e_sug    = tabela_com_voz("Sugestões de Melhoria",             "sugestoes",
-                           "Sugestão", col_e="Impacto Esperado",
-                           nome_e="Impacto Esperado", icone="💡")
+                           "Sugestão", col_e="Impacto Esperado", nome_e="Impacto Esperado",
+                           label_p="sugestão", label_extra="Impacto Esperado", icone="💡")
 
 # =========================================================
 # QUESTIONÁRIO
@@ -2772,7 +2863,7 @@ for i, pergunta in enumerate(perguntas_disc):
 # SALVAMENTO
 # =========================================================
 st.markdown("---")
-if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
+if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_width=True):
     if not nome_input or len(nome_input) < 3:
         st.error("⚠️ Nome inválido.")
         st.stop()
@@ -2818,6 +2909,7 @@ if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
                            use_container_width=True)
 
 st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+
 
 
 
