@@ -2473,7 +2473,6 @@ if st.session_state.get("pagina") == "disc":
 import streamlit as st
 import pandas as pd
 import json
-import requests
 from datetime import datetime
 from github import Github
 
@@ -2539,105 +2538,7 @@ perguntas_disc = [
 ]
 
 # =========================================================
-# BOTÃO DE VOZ — injeta texto E clica no botão salvar
-# =========================================================
-def campo_voz_autoclick(uid: str, instrucao: str, btn_label: str) -> str:
-    """
-    Após reconhecer a fala:
-    1. Injeta no input pelo placeholder
-    2. Automaticamente clica no botão cujo texto contenha btn_label
-    """
-    key_st = f"voz_{uid}"
-    placeholder_unico = f"__voz__{uid}__"
-
-    html = f"""
-    <style>
-      body {{ margin:0; padding:2px; background:transparent; font-family:sans-serif; }}
-      .vbtn {{
-        background: linear-gradient(135deg,#1a3a5c,#2563a8);
-        color:#fff; border:none; border-radius:8px;
-        padding:9px 20px; font-size:14px; cursor:pointer;
-        display:inline-flex; align-items:center; gap:7px;
-        transition:all .2s; width:100%;
-      }}
-      .vbtn.rec {{ background:linear-gradient(135deg,#7b0000,#cc0000); animation:p .8s infinite; }}
-      @keyframes p {{ 0%,100%{{opacity:1}} 50%{{opacity:.55}} }}
-      #st_{uid} {{ margin-top:6px; padding:6px 10px; background:#071520;
-                   border:1px solid #2563a8; border-radius:6px;
-                   color:#7ec8e3; font-size:13px; min-height:28px; }}
-    </style>
-    <button class="vbtn" id="b_{uid}" onclick="go()">🎤 {instrucao}</button>
-    <div id="st_{uid}">Aguardando fala...</div>
-    <script>
-    var ativo = false, recObj = null;
-    function go() {{
-      if (ativo) {{ recObj && recObj.stop(); return; }}
-      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) {{ document.getElementById('st_{uid}').innerText='❌ Abra no Chrome ou Edge'; return; }}
-      recObj = new SR();
-      recObj.lang='pt-BR'; recObj.continuous=false; recObj.interimResults=false;
-      ativo = true;
-      document.getElementById('b_{uid}').className='vbtn rec';
-      document.getElementById('b_{uid}').innerText='⏹️ Gravando — clique para parar';
-      document.getElementById('st_{uid}').innerText='🔴 Fale agora...';
-
-      recObj.onresult = function(e) {{
-        var txt = e.results[0][0].transcript;
-        document.getElementById('st_{uid}').innerText = '✅ ' + txt;
-        injetarEClicar(txt);
-      }};
-      recObj.onerror = function(e) {{
-        document.getElementById('st_{uid}').innerText = '❌ ' + e.error;
-      }};
-      recObj.onend = function() {{
-        ativo = false;
-        document.getElementById('b_{uid}').className='vbtn';
-        document.getElementById('b_{uid}').innerText='🎤 {instrucao}';
-      }};
-      recObj.start();
-    }}
-
-    function injetarEClicar(txt) {{
-      var doc = window.parent.document;
-
-      // 1. Injeta no input pelo placeholder
-      var inputs = doc.querySelectorAll('input');
-      for (var i=0; i<inputs.length; i++) {{
-        if ((inputs[i].placeholder||'').indexOf('{uid}') !== -1) {{
-          var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
-          setter.call(inputs[i], txt);
-          inputs[i].dispatchEvent(new Event('input', {{bubbles:true}}));
-          inputs[i].dispatchEvent(new Event('change', {{bubbles:true}}));
-          break;
-        }}
-      }}
-
-      // 2. Aguarda 800ms e clica no botão salvar
-      setTimeout(function() {{
-        var btns = doc.querySelectorAll('button');
-        for (var i=0; i<btns.length; i++) {{
-          if (btns[i].innerText && btns[i].innerText.indexOf('{btn_label}') !== -1) {{
-            btns[i].click();
-            break;
-          }}
-        }}
-      }}, 800);
-    }}
-    </script>
-    """
-
-    st.components.v1.html(html, height=100)
-
-    texto = st.text_input(
-        instrucao,
-        key=key_st,
-        placeholder=placeholder_unico,
-        label_visibility="collapsed"
-    )
-    return texto.strip()
-
-# =========================================================
-# MOTOR DE TABELA
+# MOTOR DE TABELA COM VOZ CORRIGIDO
 # =========================================================
 def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
                    label_p="atividade", label_extra=None, icone="📋"):
@@ -2647,7 +2548,6 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
     with st.expander("ℹ️ Legenda", expanded=False):
         st.markdown("DVD=Várias vezes/dia · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual")
 
-    # Tabela puxa do session_state (JSON)
     dados = st.session_state.get("rascunho", {}).get("tabelas", {}).get(chave, [])
     cols  = [col_p] + ([col_e] if col_e else []) + ["Horas", "Minutos", "Frequência"]
     df    = pd.DataFrame(dados).reindex(columns=cols, fill_value="")
@@ -2655,36 +2555,159 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
         df.loc[len(df)] = {c: "" for c in cols}
     df = df[cols].head(15).fillna("").astype(str)
 
-    btn_label = f"LINHA_{chave}"  # label único por tabela para o JS encontrar
+    key_p     = f"voz_{chave}_p1"
+    key_extra = f"voz_{chave}_extra"
 
-    with st.expander("🎤 Adicionar por voz", expanded=True):
-        st.caption("🟢 Clique 🎤 → fale → texto entra na tabela automaticamente")
+    with st.expander("➕ Adicionar linha por voz ou texto", expanded=True):
+        st.caption("🟢 Clique 🎤 → fale → veja o texto no campo → clique ➕ Adicionar | Chrome/Edge")
 
-        # Campo principal com autoclick
-        st.markdown(f"**🎤 {col_p}:**")
-        fala_p = campo_voz_autoclick(
-            uid=f"{chave}_p1",
-            instrucao=f"Falar {label_p}",
-            btn_label=btn_label
+        # Campo de texto principal
+        fala_p = st.text_input(
+            f"✏️ {col_p}:",
+            key=key_p,
+            placeholder="Digite ou use o microfone abaixo..."
         )
 
-        # Campo extra se necessário
+        # Botão de voz para campo principal
+        uid_p = f"{chave}_p1"
+        st.components.v1.html(f"""
+        <style>
+          body {{ margin:0; padding:2px; background:transparent; font-family:sans-serif; }}
+          .vbtn {{
+            background: linear-gradient(135deg,#1a3a5c,#2563a8);
+            color:#fff; border:none; border-radius:8px;
+            padding:9px 20px; font-size:14px; cursor:pointer;
+            display:inline-flex; align-items:center; gap:7px;
+            transition:all .2s; width:100%;
+          }}
+          .vbtn.rec {{ background:linear-gradient(135deg,#7b0000,#cc0000); animation:p .8s infinite; }}
+          @keyframes p {{ 0%,100%{{opacity:1}} 50%{{opacity:.55}} }}
+          #st_{uid_p} {{ margin-top:6px; padding:6px 10px; background:#071520;
+                   border:1px solid #2563a8; border-radius:6px;
+                   color:#7ec8e3; font-size:13px; min-height:28px; }}
+        </style>
+        <button class="vbtn" id="b_{uid_p}" onclick="go_{uid_p}()">🎤 Falar {label_p}</button>
+        <div id="st_{uid_p}">Aguardando fala...</div>
+        <script>
+        var ativo_{uid_p}=false, rec_{uid_p}=null;
+        function go_{uid_p}() {{
+          if(ativo_{uid_p}){{ rec_{uid_p}&&rec_{uid_p}.stop(); return; }}
+          var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+          if(!SR){{ document.getElementById('st_{uid_p}').innerText='❌ Use Chrome ou Edge'; return; }}
+          rec_{uid_p}=new SR();
+          rec_{uid_p}.lang='pt-BR'; rec_{uid_p}.continuous=false; rec_{uid_p}.interimResults=false;
+          ativo_{uid_p}=true;
+          document.getElementById('b_{uid_p}').className='vbtn rec';
+          document.getElementById('b_{uid_p}').innerText='⏹️ Gravando — clique para parar';
+          document.getElementById('st_{uid_p}').innerText='🔴 Fale agora...';
+          rec_{uid_p}.onresult=function(e){{
+            var txt=e.results[0][0].transcript;
+            document.getElementById('st_{uid_p}').innerText='✅ '+txt+' — agora clique em ➕ Adicionar';
+            var doc=window.parent.document;
+            var inputs=doc.querySelectorAll('input[type=text],input:not([type])');
+            for(var i=0;i<inputs.length;i++){{
+              if((inputs[i].placeholder||'').indexOf('microfone')!==-1 && !(inputs[i]._preenchido)){{
+                var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+                setter.call(inputs[i],txt);
+                inputs[i].dispatchEvent(new Event('input',{{bubbles:true}}));
+                inputs[i].dispatchEvent(new Event('change',{{bubbles:true}}));
+                inputs[i]._preenchido=true;
+                setTimeout(function(){{ inputs[i]._preenchido=false; }},3000);
+                break;
+              }}
+            }}
+          }};
+          rec_{uid_p}.onerror=function(e){{
+            document.getElementById('st_{uid_p}').innerText='❌ Erro: '+e.error;
+          }};
+          rec_{uid_p}.onend=function(){{
+            ativo_{uid_p}=false;
+            document.getElementById('b_{uid_p}').className='vbtn';
+            document.getElementById('b_{uid_p}').innerText='🎤 Falar {label_p}';
+          }};
+          rec_{uid_p}.start();
+        }}
+        </script>
+        """, height=100)
+
+        # Campo e botão de voz para coluna extra (se houver)
         fala_extra = ""
         if col_e and label_extra:
-            st.markdown(f"**🎤 {label_extra}:**")
-            fala_extra = campo_voz_autoclick(
-                uid=f"{chave}_extra",
-                instrucao=f"Falar {label_extra}",
-                btn_label=btn_label
+            fala_extra = st.text_input(
+                f"✏️ {col_e}:",
+                key=key_extra,
+                placeholder="Digite ou use o microfone abaixo..."
             )
+            uid_e = f"{chave}_extra"
+            st.components.v1.html(f"""
+            <style>
+              body {{ margin:0; padding:2px; background:transparent; font-family:sans-serif; }}
+              .vbtn2 {{
+                background: linear-gradient(135deg,#1a3a5c,#2563a8);
+                color:#fff; border:none; border-radius:8px;
+                padding:9px 20px; font-size:14px; cursor:pointer;
+                display:inline-flex; align-items:center; gap:7px; width:100%;
+              }}
+              .vbtn2.rec {{ background:linear-gradient(135deg,#7b0000,#cc0000); animation:p2 .8s infinite; }}
+              @keyframes p2 {{ 0%,100%{{opacity:1}} 50%{{opacity:.55}} }}
+              #st_{uid_e} {{ margin-top:6px; padding:6px 10px; background:#071520;
+                       border:1px solid #2563a8; border-radius:6px;
+                       color:#7ec8e3; font-size:13px; min-height:28px; }}
+            </style>
+            <button class="vbtn2" id="b_{uid_e}" onclick="go_{uid_e}()">🎤 Falar {label_extra}</button>
+            <div id="st_{uid_e}">Aguardando fala...</div>
+            <script>
+            var ativo_{uid_e}=false, rec_{uid_e}=null;
+            function go_{uid_e}() {{
+              if(ativo_{uid_e}){{ rec_{uid_e}&&rec_{uid_e}.stop(); return; }}
+              var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+              if(!SR){{ document.getElementById('st_{uid_e}').innerText='❌ Use Chrome ou Edge'; return; }}
+              rec_{uid_e}=new SR();
+              rec_{uid_e}.lang='pt-BR'; rec_{uid_e}.continuous=false; rec_{uid_e}.interimResults=false;
+              ativo_{uid_e}=true;
+              document.getElementById('b_{uid_e}').className='vbtn2 rec';
+              document.getElementById('b_{uid_e}').innerText='⏹️ Gravando — clique para parar';
+              document.getElementById('st_{uid_e}').innerText='🔴 Fale agora...';
+              rec_{uid_e}.onresult=function(e){{
+                var txt=e.results[0][0].transcript;
+                document.getElementById('st_{uid_e}').innerText='✅ '+txt+' — agora clique em ➕ Adicionar';
+                var doc=window.parent.document;
+                var inputs=doc.querySelectorAll('input[type=text],input:not([type])');
+                var count=0;
+                for(var i=0;i<inputs.length;i++){{
+                  if((inputs[i].placeholder||'').indexOf('microfone')!==-1){{
+                    count++;
+                    if(count===2 && !(inputs[i]._preenchido2)){{
+                      var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+                      setter.call(inputs[i],txt);
+                      inputs[i].dispatchEvent(new Event('input',{{bubbles:true}}));
+                      inputs[i].dispatchEvent(new Event('change',{{bubbles:true}}));
+                      inputs[i]._preenchido2=true;
+                      setTimeout(function(){{ inputs[i]._preenchido2=false; }},3000);
+                      break;
+                    }}
+                  }}
+                }}
+              }};
+              rec_{uid_e}.onerror=function(e){{
+                document.getElementById('st_{uid_e}').innerText='❌ Erro: '+e.error;
+              }};
+              rec_{uid_e}.onend=function(){{
+                ativo_{uid_e}=false;
+                document.getElementById('b_{uid_e}').className='vbtn2';
+                document.getElementById('b_{uid_e}').innerText='🎤 Falar {label_extra}';
+              }};
+              rec_{uid_e}.start();
+            }}
+            </script>
+            """, height=100)
 
-        # Botão com label único que o JS encontra
-        if st.button(f"💾 {btn_label}", key=f"btn_{chave}",
+        # Botão de adicionar — manual, confiável
+        if st.button(f"➕ Adicionar linha", key=f"btn_{chave}",
                      use_container_width=True, type="primary"):
-            if not fala_p:
-                st.warning(f"⚠️ Fale a {col_p.lower()} antes de salvar.")
+            if not fala_p.strip():
+                st.warning(f"⚠️ Preencha o campo '{col_p}' antes de adicionar.")
             else:
-                # Insere direto no JSON do session_state
                 if "tabelas" not in st.session_state["rascunho"]:
                     st.session_state["rascunho"]["tabelas"] = {}
                 if chave not in st.session_state["rascunho"]["tabelas"]:
@@ -2694,20 +2717,21 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
                 while len(linhas) < 15:
                     linhas.append({c: "" for c in cols})
 
+                inserido = False
                 for i, linha in enumerate(linhas):
                     if not str(linha.get(col_p, "")).strip():
-                        linhas[i][col_p] = fala_p
+                        linhas[i][col_p] = fala_p.strip()
                         if col_e:
-                            linhas[i][col_e] = fala_extra
+                            linhas[i][col_e] = fala_extra.strip()
                         st.session_state["rascunho"]["tabelas"][chave] = linhas
-                        # Limpa campos de voz
-                        st.session_state[f"voz_{chave}_p1"]   = ""
-                        st.session_state[f"voz_{chave}_extra"] = ""
-                        st.success(f"✅ Linha {i+1}: *{fala_p}*")
+                        st.session_state[key_p]    = ""
+                        st.session_state[key_extra] = ""
+                        st.success(f"✅ Adicionado: *{fala_p.strip()}*")
+                        inserido = True
                         st.rerun()
                         break
-                else:
-                    st.warning("⚠️ Tabela cheia.")
+                if not inserido:
+                    st.warning("⚠️ Tabela cheia (15 linhas). Edite diretamente abaixo.")
 
     # Tabela editável
     st.markdown("##### ✏️ Ajuste Horas, Minutos e Frequência na tabela:")
@@ -2730,7 +2754,7 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
 # IDENTIFICAÇÃO E CARREGAMENTO
 # =========================================================
 st.title("📋 NetExame · Rascunho")
-st.caption("🟢 Clique 🎤 → fale → entra na tabela automaticamente | Chrome/Edge")
+st.caption("🟢 Clique 🎤 → fale → veja o texto → clique ➕ Adicionar | Chrome/Edge")
 
 st.subheader("👤 Identificação")
 nome_input = st.text_input("NOME COMPLETO:").strip().upper()
@@ -2739,7 +2763,10 @@ if not nome_input:
     st.info("Digite seu nome para começar.")
     st.stop()
 
-nome_arq = f"rascunhos/{nome_input.replace(' ', '_')}.json"
+# CORRIGIDO: mesmo padrão de nome em carregamento e salvamento
+nome_limpo = nome_input.replace(" ", "_").upper()
+nome_arq   = f"rascunhos/{nome_limpo}.json"
+
 if st.session_state.get("usuario_atual") != nome_input:
     st.session_state["usuario_atual"] = nome_input
     st.session_state["logado"]        = False
@@ -2750,9 +2777,14 @@ if confirmar and not st.session_state.get("logado"):
         conteudo = repo.get_contents(nome_arq)
         st.session_state["rascunho"] = json.loads(conteudo.decoded_content.decode())
         st.success(f"✅ Rascunho de {nome_input} carregado!")
-    except:
-        st.session_state["rascunho"] = {"colaborador": nome_input, "campos": {}, "tabelas": {}, "disc": {}}
-        st.info("Nenhum rascunho encontrado. Iniciando novo.")
+    except Exception as e_load:
+        st.session_state["rascunho"] = {
+            "colaborador": nome_input,
+            "campos": {},
+            "tabelas": {},
+            "disc": {}
+        }
+        st.info(f"Nenhum rascunho encontrado. Iniciando novo. ({e_load})")
     st.session_state["logado"] = True
     st.rerun()
 
@@ -2774,9 +2806,9 @@ with col2:
     escolaridade = st.text_input("Escolaridade:",    value=val("escolaridade"))
     devolver_em  = st.text_input("Devolver em:",     value=val("devolver_em"))
 
-cursos   = st.text_area("Cursos Obrigatórios e Diferenciais:", value=val("cursos"))
-objetivo = st.text_area("Em que consiste seu trabalho e qual seu Principal Objetivo:", value=val("objetivo"))
-sistemas = st.text_area("Sistemas Utilizados na Empresa:", value=val("sistemas"))
+cursos   = st.text_area("Cursos Obrigatórios e Diferenciais:",                                value=val("cursos"))
+objetivo = st.text_area("Em que consiste seu trabalho e qual seu Principal Objetivo:",         value=val("objetivo"))
+sistemas = st.text_area("Sistemas Utilizados na Empresa:",                                     value=val("sistemas"))
 
 # =========================================================
 # 5 TABELAS
@@ -2801,7 +2833,7 @@ e_sug    = tabela_com_voz("Sugestões de Melhoria",             "sugestoes",
 # QUESTIONÁRIO
 # =========================================================
 st.markdown("---")
-st.subheader("📊 Questionário")
+st.subheader("📊 Questionário DISC")
 
 disc_salvo     = st.session_state.get("rascunho", {}).get("disc", {})
 nome_colab     = st.session_state.get("usuario_atual", "novo")
@@ -2821,9 +2853,15 @@ for i, pergunta in enumerate(perguntas_disc):
     )
 
 # =========================================================
-# SALVAMENTO
+# SALVAMENTO — CORRIGIDO
 # =========================================================
 st.markdown("---")
+
+def limpar_tabela(df):
+    """Remove linhas completamente vazias antes de salvar."""
+    col_principal = df.columns[0]
+    return df[df[col_principal].str.strip() != ""].to_dict("records")
+
 if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_width=True):
     if not nome_input or len(nome_input) < 3:
         st.error("⚠️ Nome inválido.")
@@ -2833,40 +2871,62 @@ if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_widt
         "colaborador": nome_input,
         "timestamp":   datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         "campos": {
-            "cargo": cargo, "dep": depto, "setor": setor,
-            "chefe": chefe, "unidade": unidade,
-            "escolaridade": escolaridade, "devolver_em": devolver_em,
-            "cursos": cursos, "objetivo": objetivo, "sistemas": sistemas
+            "cargo":        cargo,
+            "dep":          depto,
+            "setor":        setor,
+            "chefe":        chefe,
+            "unidade":      unidade,
+            "escolaridade": escolaridade,
+            "devolver_em":  devolver_em,
+            "cursos":       cursos,
+            "objetivo":     objetivo,
+            "sistemas":     sistemas
         },
         "tabelas": {
-            "alta":         e_alta.to_dict("records"),
-            "normal":       e_normal.to_dict("records"),
-            "baixa":        e_baixa.to_dict("records"),
-            "dificuldades": e_dif.to_dict("records"),
-            "sugestoes":    e_sug.to_dict("records")
+            "alta":         limpar_tabela(e_alta),
+            "normal":       limpar_tabela(e_normal),
+            "baixa":        limpar_tabela(e_baixa),
+            "dificuldades": limpar_tabela(e_dif),
+            "sugestoes":    limpar_tabela(e_sug)
         },
         "disc": respostas_disc
     }
 
-    nome_limpo     = nome_input.replace(" ", "_").upper()
-    caminho_github = f"rascunhos/{nome_limpo}.json"
-    conteudo_json  = json.dumps(payload, ensure_ascii=False, indent=4)
+    conteudo_json = json.dumps(payload, ensure_ascii=False, indent=4)
 
     try:
+        # Tenta buscar arquivo existente
+        existing = None
         try:
-            f = repo.get_contents(caminho_github)
-            repo.update_file(f.path, f"Update: {nome_input}", conteudo_json, f.sha)
-        except:
-            repo.create_file(caminho_github, f"Novo: {nome_input}", conteudo_json)
+            existing = repo.get_contents(nome_arq)
+        except Exception:
+            pass  # arquivo novo, tudo bem
+
+        if existing:
+            repo.update_file(existing.path, f"Update: {nome_input}", conteudo_json, existing.sha)
+            st.success(f"✅ Rascunho de {nome_input} atualizado com sucesso!")
+        else:
+            repo.create_file(nome_arq, f"Novo: {nome_input}", conteudo_json)
+            st.success(f"✅ Rascunho de {nome_input} criado com sucesso!")
+
         st.session_state["rascunho"] = payload
-        st.success(f"✅ Rascunho de {nome_input} salvo!")
-        st.download_button("📥 Baixar cópia JSON", conteudo_json.encode("utf-8"),
-                           f"{nome_limpo}_rascunho.json", "application/json",
-                           use_container_width=True)
+        st.download_button(
+            "📥 Baixar cópia JSON",
+            conteudo_json.encode("utf-8"),
+            f"{nome_limpo}_rascunho.json",
+            "application/json",
+            use_container_width=True
+        )
+
     except Exception as e:
-        st.error(f"❌ Erro: {e}")
-        st.download_button("📥 Backup Emergência", conteudo_json.encode("utf-8"),
-                           f"{nome_limpo}_EMERGENCIA.json", "application/json",
-                           use_container_width=True)
+        st.error(f"❌ Erro ao salvar no GitHub: {e}")
+        st.download_button(
+            "📥 Backup Emergência — salve este arquivo!",
+            conteudo_json.encode("utf-8"),
+            f"{nome_limpo}_EMERGENCIA.json",
+            "application/json",
+            use_container_width=True
+        )
 
 st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+
