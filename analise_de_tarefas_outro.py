@@ -2565,7 +2565,7 @@ perguntas_disc = [
 ]
 
 # =========================================================
-# MOTOR DE TABELA — VOZ DIRETA NA COLUNA
+# MOTOR DE TABELA — VOZ → TABELA AUTOMÁTICO
 # =========================================================
 def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None, icone="📋"):
 
@@ -2583,106 +2583,63 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None, icone="📋"):
     df = df[cols].head(15).fillna("").astype(str)
 
     with st.expander("🎤 Adicionar por voz", expanded=True):
+        st.caption("⏺️ REC → fale → ⏹️ STOP → texto entra automaticamente na tabela")
 
-        # --- COLUNA PRINCIPAL ---
-        st.markdown(f"**🎤 Fale a {col_p.lower()}** — clique REC, fale, clique STOP:")
-        audio_p = mic_recorder(
-            start_prompt="⏺️ REC",
-            stop_prompt="⏹️ STOP",
-            key=f"mic_{chave}_p",
-            use_container_width=False
-        )
-        # Transcreve automaticamente se áudio novo
-        key_p     = f"txt_{chave}_p"
-        key_p_id  = f"id_{chave}_p"
+        # --- MICROFONE COLUNA PRINCIPAL ---
+        st.markdown(f"**🎤 Fale a {col_p.lower()}:**")
+        audio_p  = mic_recorder(start_prompt="⏺️ REC", stop_prompt="⏹️ STOP",
+                                key=f"mic_{chave}_p", use_container_width=False)
+        key_p_id = f"id_{chave}_p"
+
         if audio_p and audio_p.get("bytes"):
             if audio_p.get("id") != st.session_state.get(key_p_id):
                 st.session_state[key_p_id] = audio_p["id"]
-                with st.spinner("🧠 Transcrevendo..."):
-                    t = transcrever(audio_p["bytes"])
-                if t:
-                    st.session_state[key_p] = t
-                    st.rerun()
+                with st.spinner("🧠 Transcrevendo e adicionando..."):
+                    texto_p = transcrever(audio_p["bytes"])
 
-        # Mostra o texto transcrito (editável)
-        txt_p = st.text_input(
-            f"✏️ {col_p} transcrita:",
-            value=st.session_state.get(key_p, ""),
-            key=f"edit_{chave}_p"
-        )
-        st.session_state[key_p] = txt_p
+                if texto_p:
+                    # Procura próxima linha vazia e insere direto
+                    inserido = False
+                    for idx, row in df.iterrows():
+                        if str(row[col_p]).strip() == "":
+                            df.at[idx, col_p] = texto_p
+                            inserido = True
+                            break
 
-        # --- COLUNA EXTRA (setor/impacto) ---
-        txt_e = ""
+                    if inserido:
+                        if "tabelas" not in st.session_state["rascunho"]:
+                            st.session_state["rascunho"]["tabelas"] = {}
+                        st.session_state["rascunho"]["tabelas"][chave] = df.to_dict("records")
+                        st.success(f"✅ Adicionado: *{texto_p}*")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Tabela cheia. Edite diretamente abaixo.")
+
+        # --- MICROFONE COLUNA EXTRA (setor/impacto) ---
         if col_e:
-            st.markdown(f"**🎤 Fale o {nome_e or col_e}:**")
-            audio_e = mic_recorder(
-                start_prompt="⏺️ REC",
-                stop_prompt="⏹️ STOP",
-                key=f"mic_{chave}_e",
-                use_container_width=False
-            )
-            key_e    = f"txt_{chave}_e"
+            st.markdown(f"**🎤 Fale o {nome_e or col_e}** (opcional — para a última linha adicionada):")
+            audio_e  = mic_recorder(start_prompt="⏺️ REC", stop_prompt="⏹️ STOP",
+                                    key=f"mic_{chave}_e", use_container_width=False)
             key_e_id = f"id_{chave}_e"
+
             if audio_e and audio_e.get("bytes"):
                 if audio_e.get("id") != st.session_state.get(key_e_id):
                     st.session_state[key_e_id] = audio_e["id"]
                     with st.spinner("🧠 Transcrevendo..."):
-                        t = transcrever(audio_e["bytes"])
-                    if t:
-                        st.session_state[key_e] = t
-                        st.rerun()
+                        texto_e = transcrever(audio_e["bytes"])
 
-            txt_e = st.text_input(
-                f"✏️ {nome_e or col_e} transcrito:",
-                value=st.session_state.get(key_e, ""),
-                key=f"edit_{chave}_e"
-            )
-            st.session_state[key_e] = txt_e
+                    if texto_e:
+                        # Insere na última linha preenchida que não tem o campo extra
+                        for idx in range(len(df) - 1, -1, -1):
+                            if str(df.at[idx, col_p]).strip() != "" and str(df.at[idx, col_e]).strip() == "":
+                                df.at[idx, col_e] = texto_e
+                                st.session_state["rascunho"]["tabelas"][chave] = df.to_dict("records")
+                                st.success(f"✅ {nome_e}: *{texto_e}*")
+                                st.rerun()
+                                break
 
-        # --- SELETORES ---
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            sel_h = st.selectbox("⏱️ Horas",      lista_h,    key=f"sh_{chave}")
-        with c2:
-            sel_m = st.selectbox("⏱️ Minutos",    lista_m,    key=f"sm_{chave}")
-        with c3:
-            sel_f = st.selectbox("📅 Frequência", lista_freq, key=f"sf_{chave}")
-
-        # --- BOTÃO ADICIONAR ---
-        if st.button("➕ Adicionar na tabela", key=f"add_{chave}",
-                     use_container_width=True, type="primary"):
-            if not txt_p.strip():
-                st.warning(f"⚠️ Grave ou digite a {col_p.lower()} antes de adicionar.")
-            else:
-                for idx, row in df.iterrows():
-                    if str(row[col_p]).strip() == "":
-                        df.at[idx, col_p]        = txt_p.strip()
-                        df.at[idx, "Horas"]      = sel_h
-                        df.at[idx, "Minutos"]    = sel_m
-                        df.at[idx, "Frequência"] = sel_f
-                        if col_e:
-                            df.at[idx, col_e] = txt_e.strip()
-
-                        if "tabelas" not in st.session_state["rascunho"]:
-                            st.session_state["rascunho"]["tabelas"] = {}
-                        st.session_state["rascunho"]["tabelas"][chave] = df.to_dict("records")
-
-                        # Limpa para próxima entrada
-                        st.session_state[f"txt_{chave}_p"] = ""
-                        st.session_state[f"id_{chave}_p"]  = None
-                        if col_e:
-                            st.session_state[f"txt_{chave}_e"] = ""
-                            st.session_state[f"id_{chave}_e"]  = None
-
-                        st.success(f"✅ Linha {idx+1} adicionada na tabela!")
-                        st.rerun()
-                        break
-                else:
-                    st.warning("⚠️ Tabela cheia. Edite diretamente abaixo.")
-
-    # Tabela editável
-    st.markdown("##### ✏️ Revise ou edite diretamente:")
+    # Tabela editável para revisar horas/minutos/frequência
+    st.markdown("##### ✏️ Revise — ajuste Horas, Minutos e Frequência diretamente na tabela:")
     cfg = {
         col_p:        st.column_config.TextColumn("Descrição", width="large"),
         "Frequência": st.column_config.SelectboxColumn("Frequência", options=lista_freq, width="small"),
@@ -2769,7 +2726,7 @@ e_sug    = tabela_com_voz("Sugestões de Melhoria",              "sugestoes",
                            nome_e="Impacto Esperado", icone="💡")
 
 # =========================================================
-# QUESTIONÁRIO (sem título DISC)
+# QUESTIONÁRIO
 # =========================================================
 st.markdown("---")
 st.subheader("📊 Questionário")
@@ -2783,7 +2740,6 @@ for i, pergunta in enumerate(perguntas_disc):
     chave_disc  = str(i)
     letra_salva = disc_salvo.get(chave_disc)
     idx         = opcoes.index(letra_salva) if letra_salva in opcoes else None
-
     respostas_disc[chave_disc] = st.radio(
         f"**{i+1}. {pergunta}**",
         options=opcoes,
@@ -2842,6 +2798,7 @@ if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
                            use_container_width=True)
 
 st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+
 
 
 
