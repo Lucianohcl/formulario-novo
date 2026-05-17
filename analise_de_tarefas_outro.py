@@ -2622,7 +2622,7 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
     return editor
 
 
-st.title("📋 NetExame · Rascunho")
+st.title("📋 Rascunho do Formulário")
 st.caption("💡 PC: Win+H para ditar por voz | Celular: 🎤 do teclado")
 
 st.subheader("👤 Identificação")
@@ -2773,7 +2773,7 @@ if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_widt
                            f"{nome_limpo}_EMERGENCIA.json", "application/json",
                            use_container_width=True)
 
-st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+st.caption("NetExame · Rascunho")
 
 
 
