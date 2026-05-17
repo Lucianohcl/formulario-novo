@@ -2499,90 +2499,51 @@ def val(chave, default=""):
     return d.get("campos", {}).get(chave, d.get(chave, default))
 
 # =========================================================
-# BOTÃO DE VOZ — fala vai direto para campo específico
-# =========================================================
-def botao_voz(uid: str, label: str) -> None:
-    """Renderiza botão de microfone. Ao falar, injeta texto no input do Streamlit pelo placeholder."""
-    st.components.v1.html(f"""
-    <style>
-      body{{margin:0;padding:0;background:transparent;font-family:sans-serif;}}
-      .vb{{background:linear-gradient(135deg,#1a3a5c,#2563a8);color:#fff;border:none;
-           border-radius:7px;padding:7px 16px;font-size:13px;cursor:pointer;
-           width:100%;display:flex;align-items:center;justify-content:center;gap:6px;}}
-      .vb.rec{{background:linear-gradient(135deg,#7b0000,#c00);animation:p .8s infinite;}}
-      @keyframes p{{0%,100%{{opacity:1}}50%{{opacity:.4}}}}
-      .inf{{margin-top:4px;font-size:11px;color:#7ec8e3;text-align:center;min-height:16px;}}
-    </style>
-    <button class="vb" id="vb_{uid}" onclick="go_{uid}()">🎤 {label}</button>
-    <div class="inf" id="inf_{uid}">Pronto</div>
-    <script>
-    var at_{uid}=false, ro_{uid}=null;
-    function go_{uid}(){{
-      if(at_{uid}){{ro_{uid}&&ro_{uid}.stop();return;}}
-      var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-      if(!SR){{document.getElementById('inf_{uid}').innerText='❌ Use Chrome/Edge';return;}}
-      ro_{uid}=new SR();
-      ro_{uid}.lang='pt-BR';ro_{uid}.continuous=false;ro_{uid}.interimResults=false;
-      at_{uid}=true;
-      document.getElementById('vb_{uid}').className='vb rec';
-      document.getElementById('vb_{uid}').innerText='⏹️ Gravando...';
-      document.getElementById('inf_{uid}').innerText='🔴 Fale agora';
-      ro_{uid}.onresult=function(e){{
-        var txt=e.results[0][0].transcript;
-        document.getElementById('inf_{uid}').innerText='✅ '+txt;
-        // Injeta no input do Streamlit pelo placeholder
-        var doc=window.parent.document;
-        var inputs=doc.querySelectorAll('input');
-        for(var i=0;i<inputs.length;i++){{
-          if((inputs[i].placeholder||'').indexOf('{uid}')!==-1){{
-            var s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
-            s.call(inputs[i],txt);
-            inputs[i].dispatchEvent(new Event('input',{{bubbles:true}}));
-            inputs[i].dispatchEvent(new Event('change',{{bubbles:true}}));
-            break;
-          }}
-        }}
-      }};
-      ro_{uid}.onerror=function(e){{document.getElementById('inf_{uid}').innerText='❌ '+e.error;}};
-      ro_{uid}.onend=function(){{
-        at_{uid}=false;
-        document.getElementById('vb_{uid}').className='vb';
-        document.getElementById('vb_{uid}').innerText='🎤 {label}';
-      }};
-      ro_{uid}.start();
-    }}
-    </script>
-    """, height=75)
-
-
-# =========================================================
-# CAMPO DE TEXTO QUE RECEBE A VOZ
-# =========================================================
-def campo_com_voz(uid: str, label_btn: str, placeholder_campo: str, key_st: str) -> str:
-    """Botão de voz + campo de texto. O JS injeta pelo placeholder único."""
-    botao_voz(uid, label_btn)
-    return st.text_input(
-        label_btn,
-        key=key_st,
-        placeholder=f"{uid}",   # placeholder contém o uid para o JS encontrar
-        label_visibility="collapsed"
-    ).strip()
-
-
-# =========================================================
-# MOTOR DE TABELA COM VOZ DIRETA — SEM GPT
+# LISTAS
 # =========================================================
 lista_freq = ["", "DVD", "D", "S", "Q", "M", "T", "A"]
 lista_h    = [""] + [f"{i} h" for i in range(25)]
 lista_m    = [""] + [f"{i} min" for i in range(0, 60, 5)]
 
-def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
-                   label_p="Atividade", label_extra=None, icone="📋"):
+# =========================================================
+# PERGUNTAS DISC
+# =========================================================
+perguntas_disc = [
+    "Quando surge um problema inesperado: (A) Age rápido | (B) Comunica a todos | (C) Analisa riscos | (D) Segue processo",
+    "Em situações de pressão: (A) Foca no resultado | (B) Mantém o otimismo | (C) Mantém a calma | (D) Busca precisão",
+    "Ao receber tarefa difícil: (A) Aceita o desafio | (B) Busca ajuda social | (C) Planeja passos | (D) Estuda as regras",
+    "No trabalho em equipe: (A) Lidera o grupo | (B) Motiva os colegas | (C) Apoia os outros | (D) Organiza as tarefas",
+    "Em reuniões: (A) Vai direto ao ponto | (B) Interage e brinca | (C) Escuta mais | (D) Anota detalhes",
+    "Ao lidar com conflitos: (A) Enfrenta direto | (B) Tenta apaziguar | (C) Evita o confronto | (D) Usa lógica e fatos",
+    "Seu ritmo de trabalho: (A) Rápido/Impaciente | (B) Rápido/Entusiasmado | (C) Calmo/Constante | (D) Metódico/Cauteloso",
+    "Prefere tarefas: (A) Desafiadoras | (B) Variadas e sociais | (C) Rotineiras e seguras | (D) Técnicas e detalhadas",
+    "Seu foco principal: (A) Resultados | (B) Relacionamentos | (C) Estabilidade | (D) Qualidade e Processos",
+    "Ao decidir, você é: (A) Decidido e firme | (B) Impulsivo e intuitivo | (C) Cuidadoso e lento | (D) Lógico e analítico",
+    "Confia mais em: (A) Sua intuição | (B) Opinião alheia | (C) Experiência passada | (D) Dados e provas",
+    "Prefere decisões: (A) Independentes | (B) Em grupo | (C) Consensuais | (D) Baseadas em normas",
+    "Estilo de organização: (A) Prático | (B) Criativo/Bagunçado | (C) Tradicional | (D) Muito organizado",
+    "Lida melhor com: (A) Mudanças rápidas | (B) Novas ideias | (C) Rotinas claras | (D) Regras rígidas",
+    "Prefere trabalhar: (A) Sozinho/Comando | (B) Ambiente festivo | (C) Ambiente tranquilo | (D) Ambiente silencioso",
+    "Seu ponto forte: (A) Coragem | (B) Comunicação | (C) Paciência | (D) Organização",
+    "Você se considera: (A) Dominante | (B) Influente | (C) Estável | (D) Conforme/Analítico",
+    "Se motiva por: (A) Poder/Bônus | (B) Reconhecimento | (C) Segurança/Paz | (D) Conhecimento Técnico",
+    "Reação a cobranças: (A) Mais esforço | (B) Desculpas criativas | (C) Ansiedade | (D) Argumentos técnicos",
+    "Ambiente ideal: (A) Competitivo | (B) Amigável | (C) Previsível | (D) Disciplinado",
+    "Ao lidar com feedback: (A) Aceita e ajusta | (B) Comenta e debate | (C) Analisa e planeja | (D) Segue regras",
+    "Como prefere aprender: (A) Fazendo | (B) Interagindo | (C) Observando | (D) Estudando materiais",
+    "Gestão de tempo: (A) Prioriza resultados | (B) Mantém relações | (C) Planeja com cuidado | (D) Segue processos",
+    "Como se comunica: (A) Direto e objetivo | (B) Amigável e motivador | (C) Calmo e ponderado | (D) Técnico e detalhista"
+]
+
+# =========================================================
+# MOTOR DE TABELA — SEM VOZ, SEM GPT
+# =========================================================
+def tabela(titulo, chave, col_p, col_e=None, nome_e=None, icone="📋"):
 
     st.markdown(f"### {icone} {titulo}")
 
     with st.expander("ℹ️ Legenda de Frequência", expanded=False):
-        st.markdown("DVD=Várias vezes/dia · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual")
+        st.markdown("DVD=Várias vezes/dia · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual  \n💡 **Dica Windows:** clique no campo e pressione **Win + H** para ditar por voz")
 
     # Carrega dados salvos
     dados = st.session_state.get("rascunho", {}).get("tabelas", {}).get(chave, [])
@@ -2592,64 +2553,64 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
         df.loc[len(df)] = [""] * len(cols)
     df = df[cols].head(15).fillna("").astype(str)
 
-    # ---- PAINEL DE VOZ ----
-    with st.expander("🎤 Adicionar linha por voz", expanded=True):
-        st.caption("Fale em cada campo → clique ➕ Adicionar linha")
+    # Painel de entrada
+    with st.expander("➕ Adicionar nova linha", expanded=True):
 
-        # Campo principal (Atividade / Dificuldade / Sugestão)
-        uid_p  = f"{chave}_p"
-        val_p  = campo_com_voz(uid_p, f"🎤 {col_p}", col_p, f"voz_{uid_p}")
+        # Campo principal
+        txt_p = st.text_input(
+            f"📝 {col_p}:",
+            key=f"inp_{chave}_p",
+            placeholder=f"Digite ou use Win+H para ditar a {col_p.lower()}"
+        )
 
-        # Campo extra (Setor Envolvido / Impacto Esperado)
-        val_e  = ""
-        if col_e and label_extra:
-            uid_e = f"{chave}_e"
-            val_e = campo_com_voz(uid_e, f"🎤 {label_extra}", label_extra, f"voz_{uid_e}")
+        # Campo extra (setor/impacto)
+        txt_e = ""
+        if col_e:
+            txt_e = st.text_input(
+                f"📝 {nome_e or col_e}:",
+                key=f"inp_{chave}_e",
+                placeholder=f"Digite ou use Win+H para ditar"
+            )
 
-        # Horas, Minutos, Frequência — seletores normais (rápidos de usar)
-        cv1, cv2, cv3 = st.columns(3)
-        with cv1:
-            sel_h = st.selectbox("Horas",      lista_h,    key=f"sh_{chave}")
-        with cv2:
-            sel_m = st.selectbox("Minutos",    lista_m,    key=f"sm_{chave}")
-        with cv3:
-            sel_f = st.selectbox("Frequência", lista_freq, key=f"sf_{chave}")
+        # Seletores de tempo e frequência
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            sel_h = st.selectbox("⏱️ Horas",      lista_h,    key=f"sh_{chave}")
+        with c2:
+            sel_m = st.selectbox("⏱️ Minutos",    lista_m,    key=f"sm_{chave}")
+        with c3:
+            sel_f = st.selectbox("📅 Frequência", lista_freq, key=f"sf_{chave}")
 
-        # Botão adicionar
-        if st.button("➕ Adicionar linha na tabela", key=f"add_{chave}", use_container_width=True, type="primary"):
-            if not val_p:
-                st.warning(f"⚠️ Fale ou digite o campo '{col_p}' antes de adicionar.")
+        if st.button(f"➕ Adicionar linha", key=f"add_{chave}",
+                     use_container_width=True, type="primary"):
+            if not txt_p.strip():
+                st.warning(f"⚠️ Digite a {col_p.lower()} antes de adicionar.")
             else:
-                # Encontra próxima linha vazia
-                adicionado = False
                 for idx, row in df.iterrows():
                     if str(row[col_p]).strip() == "":
-                        df.at[idx, col_p]        = val_p
+                        df.at[idx, col_p]        = txt_p.strip()
                         df.at[idx, "Horas"]      = sel_h
                         df.at[idx, "Minutos"]    = sel_m
                         df.at[idx, "Frequência"] = sel_f
                         if col_e:
-                            df.at[idx, col_e] = val_e
+                            df.at[idx, col_e] = txt_e.strip()
 
-                        # Persiste no rascunho
                         if "tabelas" not in st.session_state["rascunho"]:
                             st.session_state["rascunho"]["tabelas"] = {}
                         st.session_state["rascunho"]["tabelas"][chave] = df.to_dict("records")
 
-                        # Limpa campos de voz para próxima entrada
-                        st.session_state[f"voz_{chave}_p"] = ""
+                        # Limpa campos
+                        st.session_state[f"inp_{chave}_p"] = ""
                         if col_e:
-                            st.session_state[f"voz_{chave}_e"] = ""
+                            st.session_state[f"inp_{chave}_e"] = ""
 
                         st.success(f"✅ Linha {idx+1} adicionada!")
-                        adicionado = True
                         st.rerun()
                         break
-
-                if not adicionado:
+                else:
                     st.warning("⚠️ Tabela cheia (15 linhas). Edite diretamente abaixo.")
 
-    # ---- TABELA EDITÁVEL ----
+    # Tabela editável
     st.markdown("##### ✏️ Revise ou edite diretamente:")
     cfg = {
         col_p:        st.column_config.TextColumn("Descrição", width="large"),
@@ -2670,7 +2631,7 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
 # IDENTIFICAÇÃO E CARREGAMENTO
 # =========================================================
 st.title("📋 NetExame · Rascunho")
-st.caption("Preencha por voz ou manualmente — Chrome/Edge para voz")
+st.caption("💡 Dica: use Win + H em qualquer campo para ditar por voz no Windows")
 
 st.subheader("👤 Identificação")
 nome_input = st.text_input("NOME COMPLETO:").strip().upper()
@@ -2719,49 +2680,45 @@ objetivo = st.text_area("Em que consiste seu trabalho e qual seu Principal Objet
 sistemas = st.text_area("Sistemas Utilizados na Empresa:", value=val("sistemas"))
 
 # =========================================================
-# 5 TABELAS COM VOZ DIRETA
+# 5 TABELAS
 # =========================================================
 st.markdown("---")
 st.subheader("📋 Tabelas de Atividades")
-st.info("🎤 Fale em cada campo → selecione Horas, Minutos e Frequência → clique ➕ Adicionar linha")
 
-e_alta   = tabela_com_voz("Atividades de Alta Complexidade",   "alta",
-                           "Atividade", label_p="Atividade", icone="🚀")
-e_normal = tabela_com_voz("Atividades de Complexidade Normal", "normal",
-                           "Atividade", label_p="Atividade", icone="📋")
-e_baixa  = tabela_com_voz("Atividades de Baixa Complexidade",  "baixa",
-                           "Atividade", label_p="Atividade", icone="⏳")
-e_dif    = tabela_com_voz("Dificuldades e Bloqueios",           "dificuldades",
-                           "Dificuldade", col_e="Setor Envolvido", nome_e="Setor Envolvido",
-                           label_extra="Setor Envolvido", icone="⚠️")
-e_sug    = tabela_com_voz("Sugestões de Melhoria",              "sugestoes",
-                           "Sugestão", col_e="Impacto Esperado", nome_e="Impacto Esperado",
-                           label_extra="Impacto Esperado", icone="💡")
+e_alta   = tabela("Atividades de Alta Complexidade",   "alta",
+                   "Atividade", icone="🚀")
+e_normal = tabela("Atividades de Complexidade Normal", "normal",
+                   "Atividade", icone="📋")
+e_baixa  = tabela("Atividades de Baixa Complexidade",  "baixa",
+                   "Atividade", icone="⏳")
+e_dif    = tabela("Dificuldades e Bloqueios",           "dificuldades",
+                   "Dificuldade", col_e="Setor Envolvido", nome_e="Setor Envolvido", icone="⚠️")
+e_sug    = tabela("Sugestões de Melhoria",              "sugestoes",
+                   "Sugestão", col_e="Impacto Esperado", nome_e="Impacto Esperado", icone="💡")
 
 # =========================================================
-# PROGRESSO
+# DISC
 # =========================================================
 st.markdown("---")
-st.subheader("📊 Progresso")
+st.subheader("📊 Questionário DISC")
 
-def contar(df, col):
-    if df is None: return 0
-    return int(df[col].astype(str).str.strip().ne("").sum())
+disc_salvo   = st.session_state.get("rascunho", {}).get("disc", {})
+nome_colab   = st.session_state.get("usuario_atual", "novo")
+opcoes       = ["A", "B", "C", "D"]
+respostas_disc = {}
 
-campos_ok  = sum(1 for c in [cargo,depto,setor,chefe,unidade,escolaridade,devolver_em,objetivo,sistemas]
-                 if str(c).strip() != "")
-total_ativ = contar(e_alta,"Atividade")+contar(e_normal,"Atividade")+contar(e_baixa,"Atividade")
+for i, pergunta in enumerate(perguntas_disc):
+    chave_disc  = str(i)
+    letra_salva = disc_salvo.get(chave_disc)
+    idx         = opcoes.index(letra_salva) if letra_salva in opcoes else None
 
-c1,c2,c3,c4 = st.columns(4)
-c1.metric("📝 Campos básicos",  f"{campos_ok}/9")
-c2.metric("🔵 Atividades",      f"{total_ativ}")
-c3.metric("⚠️ Dificuldades",   f"{contar(e_dif,'Dificuldade')}/2 mín.")
-c4.metric("💡 Sugestões",       f"{contar(e_sug,'Sugestão')}/2 mín.")
-
-prog = min((campos_ok/9*0.3)+(min(total_ativ,10)/10*0.4)+
-           (min(contar(e_dif,"Dificuldade"),2)/2*0.15)+
-           (min(contar(e_sug,"Sugestão"),2)/2*0.15), 1.0)
-st.progress(prog, text=f"Rascunho {int(prog*100)}% completo")
+    respostas_disc[chave_disc] = st.radio(
+        f"**{i+1}. {pergunta}**",
+        options=opcoes,
+        index=idx,
+        horizontal=True,
+        key=f"disc_{nome_colab}_{i}"
+    )
 
 # =========================================================
 # SALVAMENTO
@@ -2788,7 +2745,7 @@ if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
             "dificuldades": e_dif.to_dict("records"),
             "sugestoes":    e_sug.to_dict("records")
         },
-        "disc": st.session_state.get("rascunho", {}).get("disc", {})
+        "disc": respostas_disc
     }
 
     nome_limpo     = nome_input.replace(" ", "_").upper()
@@ -2812,7 +2769,8 @@ if st.button("💾 SALVAR RASCUNHO", type="primary", use_container_width=True):
                            f"{nome_limpo}_EMERGENCIA.json", "application/json",
                            use_container_width=True)
 
-st.caption("NetExame · Rascunho com voz direta — formulário principal continua funcionando normalmente.")
+st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+
 
 
 
