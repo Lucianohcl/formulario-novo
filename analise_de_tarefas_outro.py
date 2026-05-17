@@ -2539,12 +2539,19 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
     with st.expander("ℹ️ Legenda", expanded=False):
         st.markdown("DVD=Várias vezes/dia · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual")
 
-    dados = st.session_state.get("rascunho", {}).get("tabelas", {}).get(chave, [])
     cols  = [col_p] + ([col_e] if col_e else []) + ["Horas", "Minutos", "Frequência"]
-    df    = pd.DataFrame(dados).reindex(columns=cols, fill_value="")
-    while len(df) < 15:
-        df.loc[len(df)] = {c: "" for c in cols}
-    df = df[cols].head(15).fillna("").astype(str)
+
+    # Garante estrutura e limpa None/vazios automaticamente
+    if "tabelas" not in st.session_state["rascunho"]:
+        st.session_state["rascunho"]["tabelas"] = {}
+    if chave not in st.session_state["rascunho"]["tabelas"]:
+        st.session_state["rascunho"]["tabelas"][chave] = []
+
+    linhas_limpas = [
+        l for l in st.session_state["rascunho"]["tabelas"][chave]
+        if str(l.get(col_p, "")).strip() not in ("", "None", "nan")
+    ]
+    st.session_state["rascunho"]["tabelas"][chave] = linhas_limpas
 
     key_p     = f"txt_{chave}_p"
     key_extra = f"txt_{chave}_e"
@@ -2561,32 +2568,44 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
         if st.button(f"➕ Adicionar", key=f"btn_{chave}", use_container_width=True, type="primary"):
             if not texto_p.strip():
                 st.warning(f"⚠️ Preencha o campo '{col_p}'.")
+            elif len(st.session_state["rascunho"]["tabelas"][chave]) >= 15:
+                st.warning("⚠️ Limite de 15 linhas atingido.")
             else:
-                if "tabelas" not in st.session_state["rascunho"]:
-                    st.session_state["rascunho"]["tabelas"] = {}
-                if chave not in st.session_state["rascunho"]["tabelas"]:
-                    st.session_state["rascunho"]["tabelas"][chave] = []
+                nova = {c: "" for c in cols}
+                nova[col_p] = texto_p.strip()
+                if col_e:
+                    nova[col_e] = texto_extra.strip()
+                st.session_state["rascunho"]["tabelas"][chave].append(nova)
+                del st.session_state[key_p]
+                if key_extra in st.session_state:
+                    del st.session_state[key_extra]
+                st.success(f"✅ Adicionado: *{texto_p.strip()}*")
+                st.rerun()
 
-                linhas = st.session_state["rascunho"]["tabelas"][chave]
-                while len(linhas) < 15:
-                    linhas.append({c: "" for c in cols})
-
-                for i, linha in enumerate(linhas):
-                    if not str(linha.get(col_p, "")).strip():
-                        linhas[i][col_p] = texto_p.strip()
-                        if col_e:
-                            linhas[i][col_e] = texto_extra.strip()
-                        st.session_state["rascunho"]["tabelas"][chave] = linhas
-                        del st.session_state[key_p]
-                        if key_extra in st.session_state:
-                            del st.session_state[key_extra]
-                        st.success(f"✅ Adicionado: *{texto_p.strip()}*")
-                        st.rerun()
-                        break
-                else:
-                    st.warning("⚠️ Tabela cheia (15 linhas).")
+    # Lista com botão de excluir por linha
+    linhas = st.session_state["rascunho"]["tabelas"][chave]
+    if linhas:
+        st.markdown("##### 📋 Linhas adicionadas:")
+        for i, linha in enumerate(linhas):
+            c1, c2 = st.columns([10, 1])
+            with c1:
+                resumo = str(linha.get(col_p, ""))
+                if col_e:
+                    resumo += f" | {str(linha.get(col_e, ''))}"
+                st.markdown(f"`{i+1}.` {resumo}")
+            with c2:
+                if st.button("🗑️", key=f"del_{chave}_{i}"):
+                    st.session_state["rascunho"]["tabelas"][chave].pop(i)
+                    st.rerun()
 
     st.markdown("##### ✏️ Ajuste Horas, Minutos e Frequência:")
+
+    dados = st.session_state["rascunho"]["tabelas"][chave]
+    df    = pd.DataFrame(dados).reindex(columns=cols, fill_value="")
+    while len(df) < 5:
+        df.loc[len(df)] = {c: "" for c in cols}
+    df = df[cols].fillna("").astype(str)
+
     cfg = {
         col_p:        st.column_config.TextColumn("Descrição", width="large"),
         "Frequência": st.column_config.SelectboxColumn("Frequência", options=lista_freq, width="small"),
@@ -2754,6 +2773,7 @@ if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_widt
                            use_container_width=True)
 
 st.caption("NetExame · Rascunho — formulário principal continua funcionando normalmente.")
+
 
 
 
