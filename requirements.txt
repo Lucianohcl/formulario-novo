@@ -10,3 +10,4 @@ requests
 python-dotenv
 python-docx
 fpdf
+streamlit-mic-recorder  
