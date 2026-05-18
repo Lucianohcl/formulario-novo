@@ -2475,6 +2475,7 @@ import streamlit as st
 import pandas as pd
 import json
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from github import Github
 
 # =========================================================
@@ -2660,20 +2661,31 @@ if not st.session_state["logado"]:
     st.stop()
 
 st.markdown("---")
+_voz = "🎤 *Win+H para ditar no PC · Microfone do teclado no celular*"
 col1, col2 = st.columns(2)
 with col1:
     cargo        = st.text_input("Cargo:",           value=val("cargo"))
+    st.caption(_voz)
     depto        = st.text_input("Departamento:",    value=val("dep"))
+    st.caption(_voz)
     setor        = st.text_input("Setor:",           value=val("setor"))
+    st.caption(_voz)
 with col2:
     chefe        = st.text_input("Chefe imediato:",  value=val("chefe"))
+    st.caption(_voz)
     unidade      = st.text_input("Empresa/Unidade:", value=val("unidade"))
+    st.caption(_voz)
     escolaridade = st.text_input("Escolaridade:",    value=val("escolaridade"))
+    st.caption(_voz)
     devolver_em  = st.text_input("Devolver em:",     value=val("devolver_em"))
+    st.caption(_voz)
 
 cursos   = st.text_area("Cursos Obrigatórios e Diferenciais:",                        value=val("cursos"))
+st.caption(_voz)
 objetivo = st.text_area("Em que consiste seu trabalho e qual seu Principal Objetivo:", value=val("objetivo"))
+st.caption(_voz)
 sistemas = st.text_area("Sistemas Utilizados na Empresa:",                             value=val("sistemas"))
+st.caption(_voz)
 
 st.markdown("---")
 st.subheader("📋 Tabelas de Atividades")
@@ -2774,6 +2786,7 @@ if st.button("💾 SALVAR RASCUNHO COMPLETO", type="primary", use_container_widt
                            use_container_width=True)
 
 st.caption("NetExame · Rascunho")
+
 
 
 
