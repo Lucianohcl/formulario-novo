@@ -2692,7 +2692,7 @@ e_sug    = tabela_com_voz("Sugestões de Melhoria",             "sugestoes",
                            label_p="sugestão", label_extra="Impacto Esperado", icone="💡")
 
 st.markdown("---")
-st.subheader("📊 Questionário DISC")
+st.subheader("📊 Questionário")
 
 disc_salvo     = st.session_state.get("rascunho", {}).get("disc", {})
 nome_colab     = st.session_state.get("usuario_atual", "novo")
