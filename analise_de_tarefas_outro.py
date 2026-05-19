@@ -1229,7 +1229,7 @@ with area_do_formulario:
     nome_titulo = resgate.get("colaborador", "Novo Formulário")
 
     st.title("📋 Formulário de Gestão Estratégica - Analítico por Colaborador")
-    st.info("⚠️⬇️ Role a página até o Rascunho")
+    st.info("⚠️⬇️ Role a página até o Rascunho e baixe o Manual de Preenchimento")
 
     if nome_titulo != "Novo Formulário":
         st.info(f"✨ **Editando Rascunho de:** {nome_titulo}")
