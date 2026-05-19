@@ -1229,6 +1229,7 @@ with area_do_formulario:
     nome_titulo = resgate.get("colaborador", "Novo Formulário")
 
     st.title("📋 Formulário de Acompanhamento")
+    st.info("⚠️⬇️ Role a página até o Rascunho")
 
     if nome_titulo != "Novo Formulário":
         st.info(f"✨ **Editando Rascunho de:** {nome_titulo}")
@@ -2767,13 +2768,17 @@ col_title, col_manual = st.columns([8, 2])
 with col_title:
     st.caption("💡 PC: Win+H para ditar por voz | Celular: 🎤 do teclado")
 with col_manual:
-    if st.button("📖 Abrir Manual", use_container_width=True):
-        st.session_state["mostrar_manual"] = not st.session_state.get("mostrar_manual", False)
-
-if st.session_state.get("mostrar_manual", False):
-    with st.expander("📖 Manual de Preenchimento — clique para fechar", expanded=True):
-        st.components.v1.html(MANUAL_HTML, height=600, scrolling=True)
-
+    try:
+        with open("Manual_Formulario_Colaborador_CERTO.pdf", "rb") as f:
+            st.download_button(
+                "📖 Baixar Manual",
+                data=f,
+                file_name="Manual_Formulario_Colaborador.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+    except FileNotFoundError:
+        st.warning("Manual não encontrado.")
 st.subheader("👤 Identificação")
 nome_input = st.text_input("NOME COMPLETO:").strip().upper()
 
