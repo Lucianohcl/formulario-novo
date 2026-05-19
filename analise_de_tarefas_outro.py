@@ -2762,7 +2762,7 @@ tr:nth-child(even) td{background:#f4f6f9}
 <div class="rodape">Manual de Preenchimento – Formulário Analítico do Colaborador | Gestão de Pessoas e Processos | v1.0 – 2026</div>
 </div></body></html>"""
 
-st.title("📋 NetExame · Rascunho")
+st.title("📋 Rascunho para o Formulário")
 
 col_title, col_manual = st.columns([8, 2])
 with col_title:
