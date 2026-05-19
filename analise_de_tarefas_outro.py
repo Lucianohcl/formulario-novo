@@ -2763,6 +2763,7 @@ tr:nth-child(even) td{background:#f4f6f9}
 </div></body></html>"""
 
 st.title("📋 Rascunho para o Formulário")
+st.info("📖 **Antes de começar:** Clique em **📖 Baixar Manual** e leia com atenção até o fim. O preenchimento correto depende da compreensão completa das instruções.")
 
 col_title, col_manual = st.columns([8, 2])
 with col_title:
