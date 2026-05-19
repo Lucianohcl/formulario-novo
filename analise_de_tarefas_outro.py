@@ -2623,8 +2623,156 @@ def tabela_com_voz(titulo, chave, col_p, col_e=None, nome_e=None,
     return editor
 
 
-st.title("📋 Rascunho do Formulário")
-st.caption("💡 PC: Win+H para ditar por voz | Celular: 🎤 do teclado")
+MANUAL_HTML = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><style>
+body{font-family:'Segoe UI',sans-serif;background:#f4f6f9;color:#2c3e50;margin:0;padding:0}
+.hdr{background:#0D2137;color:white;padding:14px 24px;display:flex;justify-content:space-between;align-items:center}
+.hdr h1{margin:0;font-size:15px}.hdr span{font-size:10px;opacity:.6}
+.content{max-width:780px;margin:0 auto;padding:24px 18px 50px}
+.capa{background:#0D2137;color:white;border-radius:7px;padding:30px;text-align:center;margin-bottom:24px}
+.badge{display:inline-block;background:rgba(0,229,255,.15);border:1px solid rgba(0,229,255,.3);border-radius:3px;padding:3px 12px;font-size:9px;letter-spacing:3px;color:#00e5ff;margin-bottom:14px}
+.capa h2{font-size:24px;margin:0 0 6px}.capa p{color:rgba(255,255,255,.6);font-size:11px;margin:0 0 18px}
+.blocos{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:16px}
+.bloco{background:rgba(255,255,255,.08);border-radius:4px;padding:8px 4px;text-align:center;font-size:9px}
+.bloco strong{display:block;font-size:16px;color:#00e5ff;margin-bottom:2px}
+h2.sec{background:#2563A8;color:white;padding:8px 13px;border-radius:4px;font-size:12px;margin:24px 0 12px}
+h3{color:#1A4A7A;font-size:11px;margin:16px 0 6px;border-left:3px solid #2563A8;padding-left:8px}
+p,li{font-size:11.5px;line-height:1.7;color:#3d5068}ul{padding-left:16px;margin:6px 0}
+.trava{background:#FFEBEE;border-left:4px solid #EF4444;border-radius:0 4px 4px 0;padding:8px 11px;margin:8px 0;font-size:11px;color:#C0392B}
+.trava strong{display:block;margin-bottom:2px}
+.alerta{background:#F3E5F5;border-left:4px solid #8B5CF6;border-radius:0 4px 4px 0;padding:8px 11px;margin:8px 0;font-size:11px;color:#6A1B9A}
+.alerta strong{display:block;margin-bottom:2px}
+.dica{background:#E8F5E9;border-left:4px solid #10B981;border-radius:0 4px 4px 0;padding:8px 11px;margin:8px 0;font-size:11px;color:#1A5C2A}
+.aviso{background:#FFF3E0;border-left:4px solid #F59E0B;border-radius:0 4px 4px 0;padding:8px 11px;margin:8px 0;font-size:11px;color:#7B3F00}
+table{width:100%;border-collapse:collapse;margin:9px 0;font-size:11px}
+th{background:#1A4A7A;color:white;padding:6px 9px;text-align:left}
+td{padding:6px 9px;border-bottom:1px solid #e0e8f0;vertical-align:top}
+tr:nth-child(even) td{background:#f4f6f9}
+.passos{display:flex;flex-direction:column;gap:5px;margin:9px 0}
+.passo{display:flex;gap:9px;align-items:flex-start}
+.passo-num{background:#2563A8;color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;flex-shrink:0;margin-top:2px}
+.passo-txt{font-size:11.5px;color:#3d5068;line-height:1.5}
+.objetivo{background:#0D2137;color:white;border-radius:6px;padding:18px;margin:18px 0}
+.objetivo h3{color:#00e5ff;border:none;padding:0}.objetivo li{color:rgba(255,255,255,.75)}
+.lembrete{background:#EBF3FB;border:1px solid #2563A8;border-radius:5px;padding:12px 16px;margin:12px 0}
+.lembrete li{font-size:11px}
+.rodape{text-align:center;font-size:9px;color:#aaa;margin-top:30px;padding-top:12px;border-top:1px solid #e0e8f0}
+</style></head><body>
+<div class="hdr"><h1>📋 NetExame · Formulário Analítico do Colaborador</h1><span>Gestão de Pessoas e Processos | v1.0 – 2026</span></div>
+<div class="content">
+<div class="capa"><div class="badge">MANUAL DE PREENCHIMENTO</div><h2>Formulário Analítico<br>do Colaborador</h2><p>Versão 1.0 | 2026 | Gestão de Pessoas e Processos</p><p style="max-width:480px;margin:0 auto;font-size:10px;">Ferramenta estratégica para mapear funções, atividades, perfil comportamental, produtividade, eficiência, POPs e necessidades de desenvolvimento de PPP — Pessoas, Processos e Resultados.</p>
+<div class="blocos"><div class="bloco"><strong>1</strong>Identificação</div><div class="bloco"><strong>2</strong>Sistemas</div><div class="bloco"><strong>3</strong>Atividades</div><div class="bloco"><strong>4</strong>Dificuldades</div><div class="bloco"><strong>5</strong>Questionário</div></div></div>
+
+<h2 class="sec">⚠️ VALIDAÇÕES DO FORMULÁRIO PRINCIPAL</h2>
+<table><tr><th>Ícone</th><th>Tipo</th><th>Como resolver</th></tr>
+<tr><td>⚠️</td><td><strong>Pendência de Identificação</strong></td><td>Campo obrigatório vazio. Preencha todos antes de salvar.</td></tr>
+<tr><td>❌</td><td><strong>Tempo ou Frequência faltando</strong></td><td>Linha com atividade sem Horas/Minutos ou Frequência.</td></tr>
+<tr><td>🚨</td><td><strong>Cobertura insuficiente</strong></td><td>Descreva ao menos 1 atividade em CADA nível: Alta, Normal e Baixa.</td></tr>
+<tr><td>🖥️</td><td><strong>Tecnologia insuficiente</strong></td><td>Detalhe pelo menos 3 atividades com sistemas digitais.</td></tr>
+<tr><td>⚠️</td><td><strong>Dificuldade tecnológica ausente</strong></td><td>Inclua ao menos 1 dificuldade ligada a tecnologia.</td></tr>
+<tr><td>⚠️</td><td><strong>Sugestão tecnológica ausente</strong></td><td>Inclua ao menos 1 sugestão tecnológica.</td></tr>
+<tr><td>📊</td><td><strong>Questionário incompleto</strong></td><td>Responda TODAS as 24 perguntas antes de salvar.</td></tr></table>
+<div class="alerta"><strong>🖥️ ATENÇÃO — Tecnologia:</strong> 3 atividades com sistemas · 1 dificuldade tecnológica · 1 sugestão tecnológica.</div>
+
+<h2 class="sec">1. INTRODUÇÃO</h2>
+<ul><li>Permite entender o <strong>trabalho real</strong> de cada colaborador.</li><li>Apoia decisões de <strong>treinamento, promoção e sucessão</strong>.</li><li>Identifica <strong>gargalos e oportunidades de melhoria</strong>.</li><li>Embasa a criação e revisão de <strong>POPs</strong>.</li><li>Gera dados para o <strong>Panorama Coletivo da Equipe</strong>.</li></ul>
+
+<h2 class="sec">2. COMO ACESSAR</h2>
+<h3>Etapa 1 — Rascunho</h3>
+<div class="passos">
+<div class="passo"><div class="passo-num">1</div><div class="passo-txt">Abra o link do <strong>Rascunho</strong> no Chrome ou Edge.</div></div>
+<div class="passo"><div class="passo-num">2</div><div class="passo-txt">Digite o <strong>NOME COMPLETO</strong> exatamente como consta nos registros.</div></div>
+<div class="passo"><div class="passo-num">3</div><div class="passo-txt">Marque <strong>✅ CLIQUE PARA CARREGAR MEUS DADOS</strong>.</div></div>
+<div class="passo"><div class="passo-num">4</div><div class="passo-txt">Preencha os blocos e clique em <strong>💾 SALVAR RASCUNHO COMPLETO</strong>.</div></div>
+</div>
+<div class="aviso"><strong>⚠️ Atenção:</strong> Use o nome completo, sem abreviações. Nomes diferentes criam rascunhos diferentes.</div>
+<div class="trava"><strong>🚫 Trava:</strong> Todos os campos de identificação são obrigatórios.</div>
+<h3>Etapa 2 — Envio pelo Formulário Principal</h3>
+<div class="passos">
+<div class="passo"><div class="passo-num">1</div><div class="passo-txt">Abra o link do <strong>Formulário Principal</strong>.</div></div>
+<div class="passo"><div class="passo-num">2</div><div class="passo-txt">Clique em <strong>✅ CARREGAR RASCUNHO</strong>.</div></div>
+<div class="passo"><div class="passo-num">3</div><div class="passo-txt">Resolva as pendências da auditoria automática.</div></div>
+<div class="passo"><div class="passo-num">4</div><div class="passo-txt">Clique em <strong>📤 ENVIAR FORMULÁRIO</strong>.</div></div>
+</div>
+
+<h2 class="sec">3. BLOCO 1 – IDENTIFICAÇÃO FUNCIONAL</h2>
+<table><tr><th>Campo</th><th>Orientação</th></tr>
+<tr><td><strong>Cargo</strong></td><td>Cargo oficial conforme contrato.</td></tr>
+<tr><td><strong>Departamento</strong></td><td>Nome do departamento ao qual você está vinculado.</td></tr>
+<tr><td><strong>Setor</strong></td><td>Subdivisão do departamento, se houver.</td></tr>
+<tr><td><strong>Chefe Imediato</strong></td><td>Nome completo do seu superior direto.</td></tr>
+<tr><td><strong>Empresa / Unidade</strong></td><td>Nome da empresa ou unidade onde você atua.</td></tr>
+<tr><td><strong>Escolaridade</strong></td><td>Maior grau de instrução concluído.</td></tr>
+<tr><td><strong>Devolver em</strong></td><td>Data limite. Formato: DD/MM/AAAA.</td></tr>
+<tr><td><strong>Cursos</strong></td><td>Cursos obrigatórios e diferenciais.</td></tr>
+<tr><td><strong>Objetivo</strong></td><td>2–4 frases sobre o propósito central da sua função.</td></tr>
+<tr><td><strong>Sistemas Utilizados</strong></td><td>Todos os sistemas e plataformas usados no dia a dia.</td></tr></table>
+<div class="dica"><strong>💡 Voz:</strong> Em qualquer campo, pressione <strong>Win+H</strong> no PC ou use o 🎤 do teclado no celular.</div>
+
+<h2 class="sec">4. BLOCO 2 – SISTEMAS UTILIZADOS</h2>
+<ul><li>Inclua ERPs, CRMs, BI, planilhas e sistemas internos.</li><li>Se usa ocasionalmente, inclua mesmo assim.</li></ul>
+<div class="alerta"><strong>🖥️ Alerta:</strong> O Formulário verifica atividades tecnológicas. Preencha com capricho.</div>
+
+<h2 class="sec">5. BLOCO 3 – TABELAS DE ATIVIDADES</h2>
+<table><tr><th>Coluna</th><th>Significado</th></tr>
+<tr><td><strong>Atividade</strong></td><td>Use verbos no infinitivo: "Elaborar", "Revisar", "Aprovar".</td></tr>
+<tr><td><strong>Horas</strong></td><td>Tempo médio por ocorrência (0 a 24h).</td></tr>
+<tr><td><strong>Minutos</strong></td><td>Complemento. Incrementos de 5 min.</td></tr>
+<tr><td><strong>Frequência</strong></td><td>DVD=Várias vezes/dia · D=Diário · S=Semanal · Q=Quinzenal · M=Mensal · T=Trimestral · A=Anual</td></tr></table>
+<div class="trava"><strong>🚫 Trava:</strong> Toda linha DEVE ter Horas/Minutos e Frequência. Descreva ao menos 1 atividade em CADA nível (Alta 🚀, Normal 📋, Baixa ⏳).</div>
+<div class="alerta"><strong>🖥️ Alerta:</strong> Pelo menos 3 atividades com sistemas digitais. Ex: "Lançar NF no ERP", "Gerar relatório no Power BI".</div>
+<div class="dica"><strong>💡 Voz:</strong> Win+H no PC · 🎤 do teclado no celular · Clique ➕ Adicionar · Use 🗑️ para excluir linhas.</div>
+<h3>🚀 Alta</h3><p>Exige decisão estratégica, especialização. Um erro gera impacto significativo.</p>
+<h3>📋 Normal</h3><p>Rotinas com conhecimento técnico intermediário e processos definidos.</p>
+<h3>⏳ Baixa</h3><p>Tarefas simples, repetitivas ou de apoio.</p>
+
+<h2 class="sec">6. BLOCO 4 – DIFICULDADES E SUGESTÕES</h2>
+<div class="trava"><strong>🚫 Trava:</strong> Linhas sem Horas/Minutos ou Frequência geram alerta ❌.</div>
+<div class="alerta"><strong>🖥️ Alerta:</strong> Ao menos 1 dificuldade tecnológica e 1 sugestão tecnológica.</div>
+<div class="dica"><strong>💡 Voz:</strong> Win+H ou 🎤 do teclado. Use 🗑️ para excluir linhas.</div>
+
+<h2 class="sec">7. QUESTIONÁRIO</h2>
+<p>24 perguntas comportamentais. Responda como você realmente é. <strong>Todas as 24 devem ser respondidas.</strong></p>
+<div class="trava"><strong>🚫 Trava:</strong> Questões em branco invalidam o cálculo do perfil.</div>
+
+<h2 class="sec">8. SALVAR E ENVIAR</h2>
+<div class="passos">
+<div class="passo"><div class="passo-num">1</div><div class="passo-txt">Role até o final → <strong>💾 SALVAR RASCUNHO COMPLETO</strong>.</div></div>
+<div class="passo"><div class="passo-num">2</div><div class="passo-txt">Aguarde a mensagem verde de confirmação.</div></div>
+<div class="passo"><div class="passo-num">3</div><div class="passo-txt"><strong>📥 Baixar Arquivo JSON</strong> para backup pessoal.</div></div>
+</div>
+
+<h2 class="sec">9. ERROS COMUNS</h2>
+<table><tr><th>Problema</th><th>Solução</th></tr>
+<tr><td>Dados não carregam</td><td>Nome deve ser idêntico ao cadastro.</td></tr>
+<tr><td>Erro no GitHub</td><td>Aguarde e tente novamente.</td></tr>
+<tr><td>Tabela volta ao estado anterior</td><td>Clique em 💾 SALVAR RASCUNHO COMPLETO.</td></tr>
+<tr><td>Questionário não salva</td><td>Responda TODAS as 24 perguntas antes de salvar.</td></tr>
+<tr><td>Sistema lento</td><td>Ctrl+Shift+Del para limpar cache. Use Chrome ou Edge.</td></tr></table>
+
+<h2 class="sec">10. BOAS PRÁTICAS</h2>
+<ul><li>Reserve <strong>60–90 minutos</strong> sem interrupções.</li><li>Salve a cada bloco concluído.</li><li>3 atividades com tecnologia · 1 dificuldade tecnológica · 1 sugestão tecnológica.</li><li>Use <strong>Win+H</strong> ou 🎤 para ditar por voz.</li><li>Responda todas as <strong>24 questões</strong>.</li></ul>
+<div class="objetivo"><h3>🎯 Objetivo Final</h3><ul><li>Melhorar processos e distribuir melhor as cargas de trabalho.</li><li>Identificar gaps de treinamento e desenvolvimento.</li><li>Criar e revisar POPs com base em dados reais.</li><li>Tomar decisões baseadas em evidências concretas.</li></ul></div>
+
+<h2 class="sec">11. SUPORTE</h2>
+<table><tr><th>Área</th><th>Responsável</th><th>WhatsApp</th></tr>
+<tr><td>Gestão de Pessoas e Processos</td><td>[Responsável RH/Processos]</td><td>[WhatsApp RH]</td></tr>
+<tr><td>Sistema / Suporte Técnico</td><td>Luciano Chaves</td><td>(81) 99152-3733</td></tr></table>
+<div class="lembrete"><strong>🔖 Lembre-se:</strong><ul><li>Salve frequentemente.</li><li>3 atividades com tecnologia · 1 dificuldade · 1 sugestão tecnológica.</li><li>24 questões respondidas · Respeite o prazo.</li></ul></div>
+<div class="rodape">Manual de Preenchimento – Formulário Analítico do Colaborador | Gestão de Pessoas e Processos | v1.0 – 2026</div>
+</div></body></html>"""
+
+st.title("📋 NetExame · Rascunho")
+
+col_title, col_manual = st.columns([8, 2])
+with col_title:
+    st.caption("💡 PC: Win+H para ditar por voz | Celular: 🎤 do teclado")
+with col_manual:
+    if st.button("📖 Abrir Manual", use_container_width=True):
+        st.session_state["mostrar_manual"] = not st.session_state.get("mostrar_manual", False)
+
+if st.session_state.get("mostrar_manual", False):
+    with st.expander("📖 Manual de Preenchimento — clique para fechar", expanded=True):
+        st.components.v1.html(MANUAL_HTML, height=600, scrolling=True)
 
 st.subheader("👤 Identificação")
 nome_input = st.text_input("NOME COMPLETO:").strip().upper()
