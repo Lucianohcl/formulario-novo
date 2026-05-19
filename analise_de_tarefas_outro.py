@@ -1228,7 +1228,7 @@ with area_do_formulario:
     resgate = st.session_state.get("rascunho_atual", {})
     nome_titulo = resgate.get("colaborador", "Novo Formulário")
 
-    st.title("📋 Formulário de Acompanhamento")
+    st.title("📋 Formulário de Gestão Estratégica - Analítico por Colaborador")
     st.info("⚠️⬇️ Role a página até o Rascunho")
 
     if nome_titulo != "Novo Formulário":
